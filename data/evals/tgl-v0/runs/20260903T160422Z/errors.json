@@ -1,0 +1,119 @@
+{
+  "false_positives": [
+    {
+      "id": "tgl-25845",
+      "title": "Десять общественных организаций Тольятти получат гранты на реализацию социально значимых проектов",
+      "url": "https://tgl.ru/news/item/25845-desyat-obschestvennyh-organizaciy-tolyatti-poluchat-granty-na-realizaciyu-socialno-znachimyh-proektov/",
+      "human_decision": "SKIP",
+      "discovery_result": "CANDIDATE",
+      "editor_decision": "PUBLISH",
+      "editor_reason": "Concrete allocation of over 16 million rubles in grant funding to ten Tolyatti NGOs for specific social programs (early intervention, hippotherapy, inclusive fencing, palliative and pilgrimage trips, SVO support, TB/HIV prevention). This is a substantial new fact affecting the city's non-profit sector and the services available to residents, not a mere ceremony or routine notice."
+    },
+    {
+      "id": "tgl-25832",
+      "title": "Общественный проект «Народные забавы»",
+      "url": "https://tgl.ru/news/item/25832-obschestvennyy-proekt-narodnye-zabavy/",
+      "human_decision": "SKIP",
+      "discovery_result": "CANDIDATE",
+      "editor_decision": "PUBLISH",
+      "editor_reason": "Конкретный проект благоустройства общественного пространства между домами 29 и 33 по бул. Приморскому с реальными строительными работами: демонтаж старых скамеек, урн и разрушенных плит, укладка новой тротуарной плитки с бортовыми камнями, выделение игровых полей для шашек и шахмат, озеленение и установка урн и информационного щита. Создание новой общественной зоны отдыха для жителей — значимое физическое изменение локального пространства, попадающее под политику публикации."
+    },
+    {
+      "id": "tgl-25834",
+      "title": "Общественный проект «Мечта»",
+      "url": "https://tgl.ru/news/item/25834-obschestvennyy-proekt-mechta/",
+      "human_decision": "SKIP",
+      "discovery_result": "CANDIDATE",
+      "editor_decision": "PUBLISH",
+      "editor_reason": "Конкретное материальное благоустройство внутридворовой территории по ул. Мира, 168 в рамках общественного проекта: ремонт асфальтобетонного покрытия проезда и парковок, устройство тротуара, строительство новой спортивной площадки с полиуретановым покрытием, тренажерами и уличным оборудованием. Это значимое физическое изменение городской среды на уровне двора, что соответствует критериям релевантности даже без общегородского масштаба."
+    },
+    {
+      "id": "tgl-25800",
+      "title": "Общественный проект «Хороший досуг-крепкое здоровье»",
+      "url": "https://tgl.ru/news/item/25800-obschestvennyy-proekt-horoshiy-dosug-krepkoe-zdorove/",
+      "human_decision": "SKIP",
+      "discovery_result": "CANDIDATE",
+      "editor_decision": "PUBLISH",
+      "editor_reason": "Конкретное изменение городской среды: во дворе дома по бул. Буденного, 13 планируется обустройство детской игровой площадки с резиновым покрытием, игровым комплексом, качелями, качалкой-балансиром, информационным щитом и пешеходными дорожками. Это существенный объект благоустройства конкретного двора, что соответствует проекту «Тольятти меняется» даже без общегородского масштаба. Согласно уточнению политики, значимый планируемый/стартующий этап может быть опубликован. Материал следует подать как запланированное или начинающееся обустройство, а не как завершённый объект."
+    },
+    {
+      "id": "tgl-25801",
+      "title": "Для жителей Автозаводского района открыли современный пункт выдачи льготных лекарственных препаратов",
+      "url": "https://tgl.ru/news/item/25801-dlya-zhiteley-avtozavodskogo-rayona-otkryli-sovremennyy-punkt-vydachi-lgotnyh-lekarstvennyh-preparatov/",
+      "human_decision": "SKIP",
+      "discovery_result": "CANDIDATE",
+      "editor_decision": "PUBLISH",
+      "editor_reason": "Завершённое конкретное улучшение городской медицинской инфраструктуры в Автозаводском районе: обновлённый пункт выдачи льготных лекарств с перепланировкой помещения и зоной ожидания упрощает получение препаратов для жителей. Это фактическое изменение объекта здравоохранения, а не рутинное или церемониальное событие; локальность по политике не является основанием для игнорирования."
+    },
+    {
+      "id": "tgl-25795",
+      "title": "Главный приоритет в вопросах благоустройства – мнение и запросы жителей",
+      "url": "https://tgl.ru/news/item/25795-glavnyy-prioritet-v-voprosah-blagoustroystva-mnenie-i-zaprosy-zhiteley/",
+      "human_decision": "SKIP",
+      "discovery_result": "CANDIDATE",
+      "editor_decision": "PUBLISH",
+      "editor_reason": "Конкретные физические изменения городской среды: благоустройство трех общественных территорий (сквер на ул. Жилина, сквер на бульваре Туполева, набережная Комсомольского района) с высокой степенью готовности (70–80%) и объявленными сроками завершения к 1 сентября, плюс анонс еще трех объектов на 2027 год (площадь у театра «Колесо», сквер «Ромашка», сквер у ТЦ «Русь-на-Волге»). Масштаб работ по паркам и общественным пространствам существенен для жителей, стадия «строительство/завершение» и «планирование» указаны корректно."
+    }
+  ],
+  "false_negatives": [
+    {
+      "id": "tgl-25810",
+      "title": "На новой базе МБУ Зеленстрой обсудили новые задачи нашего муниципального учреждения",
+      "url": "https://tgl.ru/news/item/25810-na-novoy-baze-mbu-zelenstroy-obsudili-novye-zadachi-nashego-municipalnogo-uchrezhdeniya/",
+      "human_decision": "PUBLISH",
+      "discovery_result": "CANDIDATE",
+      "editor_decision": "IGNORE",
+      "editor_reason": "Переезд производственной площадки самого муниципального учреждения и плановая закупка двух автоцистерн — внутренние операционные изменения, не создающие заметного для жителей физического, инфраструктурного или сервисного эффекта. Не является изменением двора, улицы, района, школы, учреждения или общественного объекта, а также не представляет собой существенный новый этап известного городского проекта."
+    },
+    {
+      "id": "tgl-25755",
+      "title": "В Тольятти ремонтируют спортлощадки и хоккейные корты",
+      "url": "https://tgl.ru/news/item/25755-v-tolyatti-remontiruyut-sportloschadki-i-hokkeynye-korty/",
+      "human_decision": "PUBLISH",
+      "discovery_result": "ERROR",
+      "editor_decision": null,
+      "editor_reason": ""
+    },
+    {
+      "id": "tgl-25759",
+      "title": "В центре внимания - вопросы здравоохранения",
+      "url": "https://tgl.ru/news/item/25759-v-centre-vnimaniya-voprosy-zdravoohraneniya/",
+      "human_decision": "PUBLISH",
+      "discovery_result": "MISSED",
+      "editor_decision": null,
+      "editor_reason": ""
+    }
+  ],
+  "runtime_errors": [
+    {
+      "id": "tgl-25853",
+      "stage": "discovery",
+      "error": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "id": "tgl-25850",
+      "stage": "discovery",
+      "error": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "id": "tgl-25835",
+      "stage": "editor",
+      "error": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "id": "tgl-25799",
+      "stage": "editor",
+      "error": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "id": "tgl-25804",
+      "stage": "editor",
+      "error": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "id": "tgl-25755",
+      "stage": "discovery",
+      "error": "Expecting value: line 1 column 1 (char 0)"
+    }
+  ]
+}
