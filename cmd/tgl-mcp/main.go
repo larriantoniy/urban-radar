@@ -14,7 +14,7 @@ import (
 )
 
 type listInput struct {
-	Limit int    `json:"limit,omitempty" jsonschema:"maximum number of newest news items to return; omit for all available items"`
+	Limit int    `json:"limit,omitempty" jsonschema:"maximum number of newest news items to return; omit for 20"`
 	Since string `json:"since,omitempty" jsonschema:"only items published on or after this ISO date (YYYY-MM-DD)"`
 }
 
@@ -31,29 +31,20 @@ func main() {
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "tgl_list_news", Description: "Get current city news from the official tgl.ru website.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input listInput) (*mcp.CallToolResult, any, error) {
-		news, err := client.ListNews(ctx)
-		if err != nil {
-			return toolError(err), nil, nil
+		if input.Limit < 0 {
+			return toolError(fmt.Errorf("limit must be zero or positive")), nil, nil
 		}
+		options := tgl.ListOptions{Limit: input.Limit}
 		if input.Since != "" {
 			since, err := time.Parse("2006-01-02", input.Since)
 			if err != nil {
 				return toolError(fmt.Errorf("since must use YYYY-MM-DD: %w", err)), nil, nil
 			}
-			filtered := news[:0]
-			for _, item := range news {
-				published, err := time.Parse("2006-01-02", item.PublishedAt)
-				if err == nil && !published.Before(since) {
-					filtered = append(filtered, item)
-				}
-			}
-			news = filtered
+			options.Since = since
 		}
-		if input.Limit < 0 {
-			return toolError(fmt.Errorf("limit must be zero or positive")), nil, nil
-		}
-		if input.Limit > 0 && input.Limit < len(news) {
-			news = news[:input.Limit]
+		news, err := client.ListNewsWithOptions(ctx, options)
+		if err != nil {
+			return toolError(err), nil, nil
 		}
 		return toolJSON(news), nil, nil
 	})

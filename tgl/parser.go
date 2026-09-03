@@ -19,6 +19,22 @@ func ParseList(r io.Reader, baseURL string) ([]News, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseListDocument(doc, baseURL)
+}
+
+func parseListPage(r io.Reader, baseURL string) ([]News, string, error) {
+	doc, err := html.Parse(r)
+	if err != nil {
+		return nil, "", err
+	}
+	items, err := parseListDocument(doc, baseURL)
+	if err != nil {
+		return nil, "", err
+	}
+	return items, nextPageURL(doc, baseURL), nil
+}
+
+func parseListDocument(doc *html.Node, baseURL string) ([]News, error) {
 	root := firstByClass(doc, "newslist_short")
 	if root == nil {
 		return nil, fmt.Errorf("tgl list: .newslist_short not found")
@@ -59,6 +75,76 @@ func ParseList(r io.Reader, baseURL string) ([]News, error) {
 	return items, nil
 }
 
+// archiveYears returns the active archive year followed by older years as
+// linked by the real #newsyears navigation on tgl.ru.
+func archiveYears(r io.Reader, baseURL string) ([]string, error) {
+	doc, err := html.Parse(r)
+	if err != nil {
+		return nil, err
+	}
+	root := firstByID(doc, "newsyears")
+	if root == nil {
+		return nil, fmt.Errorf("tgl list: #newsyears not found")
+	}
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, err
+	}
+	activeSeen := false
+	var years []string
+	for child := root.FirstChild; child != nil; child = child.NextSibling {
+		if child.Type != html.ElementNode || child.Data != "li" {
+			continue
+		}
+		if hasClass(child, "active") {
+			activeSeen = true
+		}
+		if !activeSeen {
+			continue
+		}
+		link := firstElement(child, "a")
+		if link == nil {
+			continue
+		}
+		yearURL, err := base.Parse(attr(link, "href"))
+		if err != nil {
+			return nil, err
+		}
+		years = append(years, yearURL.String())
+	}
+	if len(years) == 0 {
+		return nil, fmt.Errorf("tgl list: active archive year not found")
+	}
+	return years, nil
+}
+
+func nextPageURL(doc *html.Node, baseURL string) string {
+	root := firstByClass(doc, "pagination")
+	if root == nil {
+		return ""
+	}
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return ""
+	}
+	activeSeen := false
+	for child := root.FirstChild; child != nil; child = child.NextSibling {
+		if child.Type != html.ElementNode || child.Data != "li" {
+			continue
+		}
+		if activeSeen {
+			if link := firstElement(child, "a"); link != nil {
+				if next, err := base.Parse(attr(link, "href")); err == nil {
+					return next.String()
+				}
+			}
+			return ""
+		}
+		activeSeen = hasClass(child, "active")
+	}
+	return ""
+}
+
 // ParseArticle parses HTML from a tgl.ru /news/item/ page. It does no HTTP work.
 func ParseArticle(r io.Reader, rawURL string) (Article, error) {
 	doc, err := html.Parse(r)
@@ -96,6 +182,21 @@ func firstByClass(n *html.Node, class string) *html.Node {
 		return x
 	}
 	return nil
+}
+func firstByID(n *html.Node, id string) *html.Node {
+	var walk func(*html.Node) *html.Node
+	walk = func(x *html.Node) *html.Node {
+		if x.Type == html.ElementNode && attr(x, "id") == id {
+			return x
+		}
+		for c := x.FirstChild; c != nil; c = c.NextSibling {
+			if found := walk(c); found != nil {
+				return found
+			}
+		}
+		return nil
+	}
+	return walk(n)
 }
 func descendantsByClass(n *html.Node, class string) (out []*html.Node) {
 	var walk func(*html.Node)

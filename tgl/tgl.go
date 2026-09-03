@@ -37,6 +37,12 @@ type Client struct {
 	httpClient *http.Client
 }
 
+// ListOptions controls how much city-news history is read.
+type ListOptions struct {
+	Limit int
+	Since time.Time
+}
+
 // NewClient creates a client with the supplied request timeout.
 func NewClient(timeout time.Duration) *Client {
 	return &Client{httpClient: &http.Client{Timeout: timeout}}
@@ -49,6 +55,68 @@ func (c *Client) ListNews(ctx context.Context) ([]News, error) {
 		return nil, err
 	}
 	return ParseList(body, cityNewsURL)
+}
+
+// ListNewsWithOptions reads the newest city news from the site's archive pages.
+// A zero Limit uses the site's normal archive page size (20 items).
+func (c *Client) ListNewsWithOptions(ctx context.Context, options ListOptions) ([]News, error) {
+	if options.Limit < 0 {
+		return nil, fmt.Errorf("limit must be zero or positive")
+	}
+	limit := options.Limit
+	if limit == 0 {
+		limit = 20
+	}
+
+	body, err := c.fetch(ctx, cityNewsURL)
+	if err != nil {
+		return nil, err
+	}
+	years, err := archiveYears(body, cityNewsURL)
+	if err != nil {
+		return nil, err
+	}
+
+	news := make([]News, 0, limit)
+	seen := make(map[string]struct{})
+	for _, yearURL := range years {
+		pageURL := yearURL
+		for pageURL != "" {
+			body, err := c.fetch(ctx, pageURL)
+			if err != nil {
+				return nil, err
+			}
+			page, nextURL, err := parseListPage(body, pageURL)
+			if err != nil {
+				return nil, err
+			}
+
+			olderThanSince := false
+			for _, item := range page {
+				published, err := time.Parse("2006-01-02", item.PublishedAt)
+				if err != nil {
+					return nil, err
+				}
+				if !options.Since.IsZero() && published.Before(options.Since) {
+					olderThanSince = true
+					continue
+				}
+				if _, duplicate := seen[item.URL]; duplicate {
+					continue
+				}
+				seen[item.URL] = struct{}{}
+				news = append(news, item)
+				if len(news) == limit {
+					return news, nil
+				}
+			}
+			if olderThanSince {
+				return news, nil
+			}
+			pageURL = nextURL
+		}
+	}
+	return news, nil
 }
 
 // GetNews fetches and parses one tgl.ru news item.
