@@ -1,0 +1,8 @@
+{
+  "hypothesis": "The Editor has an overly strict bias toward city-wide scale and completed or approved changes. Clarifying locality and project stage should increase recall without major precision degradation.",
+  "baseline_run_id": "20260903T123524Z",
+  "changed_component": "Editor prompt only",
+  "v0_prompt": "agents/editor/prompt.md",
+  "v1_prompt": "agents/editor/prompt-v1.md",
+  "expected_effect": "Recall increase without major precision degradation."
+}
