@@ -1,0 +1,10 @@
+# Add this stdio MCP server with Hermes 0.21.0.
+# Replace /srv/urban-radar with the project directory on the target machine.
+mcp_servers:
+  urban-radar-tgl:
+    command: go
+    args: ["run", "/srv/urban-radar/cmd/tgl-mcp"]
+    timeout: 30
+    connect_timeout: 15
+    tools:
+      include: ["tgl_list_news", "tgl_get_news"]
