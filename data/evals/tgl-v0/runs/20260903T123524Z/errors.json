@@ -1,0 +1,113 @@
+{
+  "false_positives": [
+    {
+      "id": "tgl-25800",
+      "title": "Общественный проект «Хороший досуг-крепкое здоровье»",
+      "url": "https://tgl.ru/news/item/25800-obschestvennyy-proekt-horoshiy-dosug-krepkoe-zdorove/",
+      "human_decision": "SKIP",
+      "discovery_result": "CANDIDATE",
+      "editor_decision": "PUBLISH",
+      "editor_reason": "Конкретное городское изменение: обустройство новой детской игровой площадки с безопасным покрытием, игровым оборудованием и пешеходными дорожками по конкретному адресу (бульвар Буденного, 13). Подробные данные подтверждают реальное строительство, а не церемониальное событие."
+    },
+    {
+      "id": "tgl-25801",
+      "title": "Для жителей Автозаводского района открыли современный пункт выдачи льготных лекарственных препаратов",
+      "url": "https://tgl.ru/news/item/25801-dlya-zhiteley-avtozavodskogo-rayona-otkryli-sovremennyy-punkt-vydachi-lgotnyh-lekarstvennyh-preparatov/",
+      "human_decision": "SKIP",
+      "discovery_result": "CANDIDATE",
+      "editor_decision": "PUBLISH",
+      "editor_reason": "Confirmed modernization and opening of a subsidized medicines dispensing point in polyclinic #7, improving access to healthcare for residents of the Avtozavodsky district. Concrete infrastructure change with low uncertainty, of direct relevance to the community."
+    },
+    {
+      "id": "tgl-25774",
+      "title": "Внимание!",
+      "url": "https://tgl.ru/news/item/25774-vnimanie/",
+      "human_decision": "SKIP",
+      "discovery_result": "CANDIDATE",
+      "editor_decision": "PUBLISH",
+      "editor_reason": "Реальное изменение городского транспорта: временные изменения схем движения троллейбусных маршрутов (№ 2, 4, 7, 18) и перевод маршрутов № 1 и № 22 на автономный ход из-за ремонта контактной сети в Центральном районе. Это затрагивает ежедневные поездки жителей, поэтому представляет общественный интерес."
+    }
+  ],
+  "false_negatives": [
+    {
+      "id": "tgl-25864",
+      "title": "Заброшенное здание на Дзержинского может обрести вторую жизнь",
+      "url": "https://tgl.ru/news/item/25864-zabroshennoe-zdanie-na-dzerzhinskogo-mozhet-obresti-vtoruyu-zhizn/",
+      "human_decision": "PUBLISH",
+      "discovery_result": "CANDIDATE",
+      "editor_decision": "RESEARCH",
+      "editor_reason": "Потенциальное перепрофилирование заброшенного здания под центр реабилитации участников СВО — значимая тема для города (инфраструктура, здравоохранение, безопасность ветшающего объекта). Однако на текущий момент это лишь выездное совещание без конкретных решений: нет утверждённого назначения, строительных решений и сроков. Событие преждевременно для публикации как состоявшегося изменения, но достаточно существенно для дальнейшего отслеживания."
+    },
+    {
+      "id": "tgl-25855",
+      "title": "Активные жители Шлюзового преобразили детские сады",
+      "url": "https://tgl.ru/news/item/25855-aktivnye-zhiteli-shlyuzovogo-preobrazili-detskie-sady/",
+      "human_decision": "PUBLISH",
+      "discovery_result": "CANDIDATE",
+      "editor_decision": "IGNORE",
+      "editor_reason": "Добровольческая акция по покраске веранд в четырёх детских садах микрорайона Шлюзовой — позитивное, но локальное и скромное по масштабу благоустройство. Не является значимым городским изменением, ограничено одним микрорайоном и не затрагивает городскую инфраструктуру или широкую аудиторию."
+    },
+    {
+      "id": "tgl-25833",
+      "title": "Общественный проект «Наш уютный двор»",
+      "url": "https://tgl.ru/news/item/25833-obschestvennyy-proekt-nash-uyutnyy-dvor/",
+      "human_decision": "PUBLISH",
+      "discovery_result": "CANDIDATE",
+      "editor_decision": "IGNORE",
+      "editor_reason": "Это благоустройство одного двора (ул. Баныкина, 30): устройство детской и спортивной площадок, демонтаж старого оборудования. Масштаб типичный дворовый, локального значения, без выраженного влияния на город в целом. Для сообщества «Тольятти меняется» такое локальное благоустройство недостаточно значимо."
+    },
+    {
+      "id": "tgl-25817",
+      "title": "Комплексный подход: в Тольятти обустраивают пешеходные дорожки вдоль магистралей",
+      "url": "https://tgl.ru/news/item/25817-kompleksnyy-podhod-v-tolyatti-obustraivayut-peshehodnye-dorozhki-vdol-magistraley/",
+      "human_decision": "PUBLISH",
+      "discovery_result": "CANDIDATE",
+      "editor_decision": null,
+      "editor_reason": ""
+    },
+    {
+      "id": "tgl-25810",
+      "title": "На новой базе МБУ Зеленстрой обсудили новые задачи нашего муниципального учреждения",
+      "url": "https://tgl.ru/news/item/25810-na-novoy-baze-mbu-zelenstroy-obsudili-novye-zadachi-nashego-municipalnogo-uchrezhdeniya/",
+      "human_decision": "PUBLISH",
+      "discovery_result": "CANDIDATE",
+      "editor_decision": "IGNORE",
+      "editor_reason": "Внутреннее организационное событие муниципального учреждения: переезд МБУ «Зеленстрой» на новую производственную площадку и плановая закупка двух автоцистерн. Не является заметным изменением городской среды для жителей — нет открытия объекта с публичным доступом, изменений в качестве услуг или видимых преобразований территорий. Текущие рабочие процессы и оснащение техникой носят внутренний хозяйственный характер."
+    },
+    {
+      "id": "tgl-25770",
+      "title": "В Тольятти завершается ремонт дворов в рамках программы «Формирование комфортной городской среды»",
+      "url": "https://tgl.ru/news/item/25770-v-tolyatti-zavershaetsya-remont-dvorov-v-ramkah-programmy-formirovanie-komfortnoy-gorodskoy-sredy/",
+      "human_decision": "PUBLISH",
+      "discovery_result": "CANDIDATE",
+      "editor_decision": "IGNORE",
+      "editor_reason": "Рутинное муниципальное благоустройство дворов в рамках стандартной федеральной программы. Локальные работы по конкретным адресам, не представляют значимого изменения для города в целом."
+    },
+    {
+      "id": "tgl-25759",
+      "title": "В центре внимания - вопросы здравоохранения",
+      "url": "https://tgl.ru/news/item/25759-v-centre-vnimaniya-voprosy-zdravoohraneniya/",
+      "human_decision": "PUBLISH",
+      "discovery_result": "MISSED",
+      "editor_decision": null,
+      "editor_reason": ""
+    }
+  ],
+  "runtime_errors": [
+    {
+      "id": "tgl-25832",
+      "stage": "discovery",
+      "error": "Expecting value: line 3 column 20 (char 43)"
+    },
+    {
+      "id": "tgl-25835",
+      "stage": "editor",
+      "error": ""
+    },
+    {
+      "id": "tgl-25817",
+      "stage": "editor",
+      "error": "missing decisions array"
+    }
+  ]
+}
