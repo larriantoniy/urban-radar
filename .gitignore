@@ -1,2 +1,10 @@
 /data/runs/*
 !/data/runs/.gitkeep
+/data/evals/tgl-v0/runs/*
+!/data/evals/tgl-v0/runs/.gitkeep
+__pycache__/
+*.log
+*.pid
+.env
+.env.*
+!.env.example
