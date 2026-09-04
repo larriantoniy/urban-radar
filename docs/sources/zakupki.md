@@ -32,7 +32,10 @@ The V0 evaluation candidates are in `data/evals/zakupki-v0/items.json`; fill
 
 Current limitations: EIS response schemas and credentials are deployment
 specific; this milestone provides the adapter boundary and safe bounded probe,
-not mass crawling or agent orchestration.
+not mass crawling or agent orchestration. The HTML source supports explicit
+date-bounded, paginated retrieval; the live probe records a bounded
+deterministic snapshot (maximum 50 items) and does not claim a complete
+seven-day universe when that bound is reached.
 
 The former deterministic locality/noise filter is retained only in
 `zakupki/filter.go` and `cmd/zakupki-eval` to reproduce the rejected historical
@@ -126,8 +129,8 @@ EIS → Zakupki Source → SourceItem → Discovery → Editor
 EIS → Zakupki MCP → Research Agent
 ```
 
-Run `go run ./cmd/zakupki-mcp` to expose the stdio MCP tools for a future
-Research Agent: `get_procurement`, `list_procurement_documents`, and
+Run `go run ./cmd/zakupki-mcp` to expose the stdio MCP tools. Research Agent
+V0.2 may use `get_procurement`, `list_procurement_documents`, and
 `get_procurement_document`, plus trusted attachment tools
 `list_procurement_attachments` and `get_procurement_attachment`. Inputs always
 include a registry ID; an optional canonical `source_url` may be passed from a
@@ -139,3 +142,15 @@ bounded; V0 extracts text from HTML, XML and plain text, and trusted DOCX/XLSX
 attachments are extracted by bounded deterministic parsers. PDF currently
 returns `UNSUPPORTED_DOCUMENT_TYPE`. Configure `ZAKUPKI_CA_FILE`
 when the host requires the independently obtained official CA bundle.
+
+## Research result semantics
+
+Research `NOT_FOUND` means that confirmation was not found in the investigated
+available primary sources; it does not establish that a fact does not exist.
+The `unresolved` list is reserved for questions that were not adequately
+investigated or remain operationally open. Therefore an overall `PARTIAL`
+result containing FOUND and NOT_FOUND findings with `unresolved=[]` is valid:
+every question was processed, but not every answer was evidenced.
+
+Human review validates claims against the cited primary evidence. Review text
+is a gate for Editor re-evaluation and is not itself an evidence source.

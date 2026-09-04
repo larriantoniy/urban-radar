@@ -10,6 +10,7 @@
 !/data/evals/research-zakupki-v0/runs/.gitkeep
 /data/evals/**/runs/**/work/
 /data/evals/**/runs/**/raw/
+/data/evals/**/runs/**/raw-output.txt
 *.usage.json
 __pycache__/
 *.log
@@ -21,3 +22,7 @@ __pycache__/
 *.cer
 *.key
 *.cookie
+*.pyc
+.DS_Store
+.coverage
+*.coverage

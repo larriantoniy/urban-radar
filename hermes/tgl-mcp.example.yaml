@@ -8,3 +8,16 @@ mcp_servers:
     connect_timeout: 15
     tools:
       include: ["tgl_list_news", "tgl_get_news"]
+
+  urban-radar-zakupki:
+    command: go
+    args: ["run", "/srv/urban-radar/cmd/zakupki-mcp"]
+    timeout: 60
+    connect_timeout: 20
+    tools:
+      include:
+        - get_procurement
+        - list_procurement_documents
+        - get_procurement_document
+        - list_procurement_attachments
+        - get_procurement_attachment

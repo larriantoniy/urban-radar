@@ -18,7 +18,7 @@ import (
 	"golang.org/x/net/html"
 )
 
-// ZakupkiSearchHTMLSource reads exactly one public extended-search result page.
+// ZakupkiSearchHTMLSource reads bounded public extended-search result pages.
 type ZakupkiSearchHTMLSource struct {
 	URL    string
 	Client *http.Client
