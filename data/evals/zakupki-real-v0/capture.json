@@ -1,0 +1,13 @@
+{
+  "captured_at": "2026-09-04T07:44:19Z",
+  "dataset_sha256": "751538b07a3e08aa5cebdab0150c5e0193dc99415d95239815ffd47f029e1169",
+  "human_label_status": "partially_labelled_manual_review",
+  "items_path": "items.json",
+  "normalization_errors": 0,
+  "normalized_count": 50,
+  "received_count": 50,
+  "requested_limit": 50,
+  "rss_url_sha256": "",
+  "source": "html",
+  "source_period": null
+}
