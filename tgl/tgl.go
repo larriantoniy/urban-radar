@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"urban-radar/source"
 )
 
 const (
@@ -22,6 +24,31 @@ type News struct {
 	PublishedAt string `json:"published_at"`
 	URL         string `json:"url"`
 	Summary     string `json:"summary"`
+}
+
+// SourceItem adapts a TGL list item to the shared source-level contract.
+func (n News) SourceItem(retrievedAt time.Time) source.SourceItem {
+	return source.SourceItem{
+		Source: "tgl", SourceItemID: newsID(n.URL), URL: n.URL, Title: n.Title,
+		Summary: n.Summary, PublishedAt: parseNewsDate(n.PublishedAt), RetrievedAt: retrievedAt,
+	}
+}
+
+func newsID(rawURL string) string {
+	parts := strings.Split(strings.Trim(rawURL, "/"), "/")
+	if len(parts) > 0 {
+		segment := parts[len(parts)-1]
+		if dash := strings.IndexByte(segment, '-'); dash > 0 {
+			return segment[:dash]
+		}
+		return segment
+	}
+	return rawURL
+}
+
+func parseNewsDate(value string) time.Time {
+	parsed, _ := time.Parse("2006-01-02", value)
+	return parsed
 }
 
 // Article is a full news item returned by GetNews.

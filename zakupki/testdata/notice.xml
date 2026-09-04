@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ns:notice xmlns:ns="urn:eis:notice">
+  <ns:registryNumber>0159300000126000001</ns:registryNumber>
+  <ns:noticeLink>https://zakupki.gov.ru/epz/order/notice/notice223/common-info.html?regNumber=0159300000126000001</ns:noticeLink>
+  <ns:lawType>44-ФЗ</ns:lawType>
+  <ns:purchaseObject>Капитальный ремонт дороги в Тольятти</ns:purchaseObject>
+  <ns:customerName>МБУ города Тольятти «Дорожное хозяйство»</ns:customerName>
+  <ns:customerINN>6320000000</ns:customerINN>
+  <ns:customerRegion>Самарская область</ns:customerRegion>
+  <ns:initialPrice>12500000.00</ns:initialPrice>
+  <ns:currency>RUB</ns:currency>
+  <ns:stage>Приём заявок</ns:stage>
+  <ns:deliveryPlace>г. Тольятти</ns:deliveryPlace>
+  <ns:objectAddress>г. Тольятти, ул. Мира, 10</ns:objectAddress>
+  <ns:code>42.11.20.000</ns:code>
+  <ns:publicationDate>2026-09-03</ns:publicationDate>
+  <ns:tenderDate>2026-10-01</ns:tenderDate>
+</ns:notice>

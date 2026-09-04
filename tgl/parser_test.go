@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseList(t *testing.T) {
@@ -20,6 +21,14 @@ func TestParseList(t *testing.T) {
 	}
 	if got[0].Title != "Разговор о важном!" || got[0].PublishedAt != "2026-09-02" || got[0].URL != "https://tgl.ru/news/item/25860-razgovor-o-vazhnom/" || got[0].Summary != "В День знаний ученики лицея «Созвездие» встретились с ветераном СВО." {
 		t.Fatalf("unexpected first item: %#v", got[0])
+	}
+}
+
+func TestNewsSourceItem(t *testing.T) {
+	n := News{Title: "x", PublishedAt: "2026-09-03", URL: "https://tgl.ru/news/item/25864-example/"}
+	item := n.SourceItem(time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC))
+	if item.Source != "tgl" || item.SourceItemID != "25864" || item.PublishedAt.IsZero() {
+		t.Fatalf("unexpected source item: %#v", item)
 	}
 }
 
