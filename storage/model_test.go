@@ -2,7 +2,9 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"os"
+	"slices"
 	"testing"
 )
 
@@ -30,4 +32,10 @@ func TestOpenPostgresDoesNotUseEmptyURL(t *testing.T) {
 		t.Fatal("expected empty URL error")
 	}
 	_ = os.Getenv("DATABASE_URL")
+}
+
+func TestPostgresDriverRegistered(t *testing.T) {
+	if !slices.Contains(sql.Drivers(), "pgx") {
+		t.Fatal("pgx database/sql driver is not registered")
+	}
 }

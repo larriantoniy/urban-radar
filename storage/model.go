@@ -1,5 +1,5 @@
-// Package storage contains persistence ports and the PostgreSQL implementation
-// used by the future production pipeline.
+// Package storage contains the PostgreSQL implementation used by the
+// incremental news-check runtime.
 package storage
 
 import (
@@ -8,31 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"time"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
-
-type ProcessedSourceItem struct {
-	Source            string
-	SourceItemID      string
-	SourceURL         string
-	Title             string
-	PublishedAtSource *time.Time
-	RetrievedAt       time.Time
-	DiscoveryResult   string
-	EditorDecision    string
-	Importance        *float64
-	ProcessedAt       *time.Time
-	PublicationStatus string
-	PublishedAt       *time.Time
-	ExternalPostID    string
-	Metadata          map[string]any
-}
-
-type Repository interface {
-	Get(context.Context, string, string) (ProcessedSourceItem, error)
-	Upsert(context.Context, ProcessedSourceItem) error
-	Close() error
-}
 
 func DatabaseURLFromEnv() (string, error) {
 	value := os.Getenv("DATABASE_URL")
