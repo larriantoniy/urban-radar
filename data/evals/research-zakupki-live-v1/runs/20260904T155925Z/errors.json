@@ -1,0 +1,10 @@
+{
+  "runtime_errors": [
+    {
+      "error_type": "hermes_failure",
+      "error_message": "hermes -z: agent failed: [Errno 1] Operation not permitted: '/Users/anton/.hermes/logs/agent.log'",
+      "raw_output": ""
+    }
+  ],
+  "hermes_stderr": "hermes -z: agent failed: [Errno 1] Operation not permitted: '/Users/anton/.hermes/logs/agent.log'\n"
+}

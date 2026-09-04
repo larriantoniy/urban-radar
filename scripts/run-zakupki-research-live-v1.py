@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one live Research V0.1 handoff from the frozen Editor RESEARCH case."""
+"""Run one live Research handoff from the frozen Editor RESEARCH case."""
 from __future__ import annotations
 
 import argparse
@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 UNIVERSE = ROOT / "data/evals/live-pipeline-probe-v1/runs/20260904T145556Z/universe.json"
 EDITOR_RESULTS = ROOT / "data/evals/live-pipeline-probe-v1/runs/20260904T145556Z/editor-results.json"
-PROMPT = ROOT / "agents/research/prompt-v0.1.md"
+DEFAULT_PROMPT = ROOT / "agents/research/prompt-v0.2.md"
 RUNS = ROOT / "data/evals/research-zakupki-live-v1/runs"
 REGISTRY_ID = "0142200001326017137"
 
@@ -38,7 +38,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="deepseek/deepseek-v4-flash-0731")
     ap.add_argument("--provider", default="openrouter")
+    ap.add_argument("--prompt", type=Path, default=DEFAULT_PROMPT)
     args = ap.parse_args()
+    prompt = args.prompt if args.prompt.is_absolute() else ROOT / args.prompt
 
     universe = json.loads(UNIVERSE.read_text(encoding="utf-8"))
     source = next((item for item in universe if item.get("id") == REGISTRY_ID), None)
@@ -66,7 +68,7 @@ def main() -> int:
     write(rd / "research-request.json", request)
 
     context = (
-        PROMPT.read_text(encoding="utf-8")
+        prompt.read_text(encoding="utf-8")
         + "\n\nResearch Request JSON follows. Treat it as the complete request.\n\n"
         + json.dumps(request, ensure_ascii=False)
         + "\n\nPROVENANCE HANDOFF\n"
@@ -117,17 +119,20 @@ def main() -> int:
     trace = {
         "source_url": request["source_url"],
         "fallback_search_resolver": "NOT_USED (ZAKUPKI_SEARCH_URL intentionally empty)",
-        "tools": ["get_procurement", "list_procurement_documents", "list_procurement_attachments", "get_procurement_attachment"],
-        "trace_basis": "Evidence Pack provenance and successful MCP calls with empty search resolver configuration",
+        "permitted_tools": ["get_procurement", "list_procurement_documents", "get_procurement_document", "list_procurement_attachments", "get_procurement_attachment"],
+        "actual_call_sequence": None,
+        "actual_call_trace_status": "unavailable from Hermes oneshot output",
+        "trace_basis": "Evidence Pack provenance; the harness does not claim unavailable call telemetry",
     }
     if pack:
         attachment_ids = []
         attachment_names = []
         for finding in pack.get("findings", []):
             for evidence in finding.get("evidence", []):
-                if evidence.get("source_type") == "ATTACHMENT":
-                    if evidence.get("attachment_id"):
-                        attachment_ids.append(evidence["attachment_id"])
+                if "/44fz/filestore/" in evidence.get("source_url", ""):
+                    attachment_id = evidence.get("attachment_id") or evidence.get("document_id")
+                    if attachment_id:
+                        attachment_ids.append(attachment_id)
                     if evidence.get("document_name"):
                         attachment_names.append(evidence["document_name"])
         trace["attachment_ids_opened"] = list(dict.fromkeys(attachment_ids))
@@ -145,14 +150,16 @@ def main() -> int:
         "run_id": rid,
         "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "status": "success" if not errors else "failed",
-        "experiment": "LIVE RESEARCH HANDOFF V0.1",
+        "experiment": "LIVE RESEARCH HANDOFF",
+        "harness_version": "live-pipeline-v1",
+        "agent_policy_version": prompt.stem,
         "source_item_id": REGISTRY_ID,
         "source_url": request["source_url"],
         "source_universe_path": str(UNIVERSE.relative_to(ROOT)),
         "source_universe_hash": sha(UNIVERSE),
         "editor_result_path": str(EDITOR_RESULTS.relative_to(ROOT)),
-        "research_prompt_path": str(PROMPT.relative_to(ROOT)),
-        "research_prompt_hash": sha(PROMPT),
+        "research_prompt_path": str(prompt.relative_to(ROOT)),
+        "research_prompt_hash": sha(prompt),
         "model": args.model,
         "provider": args.provider,
         "procurement_ref": "validated SourceURL; search fallback disabled for this run",
@@ -160,7 +167,7 @@ def main() -> int:
         "usage": usage,
     }
     write(rd / "run.json", run)
-    summary = [f"# Live Research Handoff V0.1 — {rid}", "", f"Registry ID: {REGISTRY_ID}", f"Status: {pack.get('status') if pack else 'ERROR'}", "", "Fallback search resolver: NOT USED", "", "Tool trace: see `tool-trace.json`"]
+    summary = [f"# Live Research Handoff — {rid}", "", f"Registry ID: {REGISTRY_ID}", f"Prompt: {prompt.relative_to(ROOT)}", f"Status: {pack.get('status') if pack else 'ERROR'}", "", "Fallback search resolver: NOT USED", "", "Tool trace: see `tool-trace.json`"]
     if pack:
         summary += [f"Unresolved: {len(pack.get('unresolved', []))}", f"Findings: {len(pack.get('findings', []))}"]
     (rd / "summary.md").write_text("\n".join(summary) + "\n", encoding="utf-8")

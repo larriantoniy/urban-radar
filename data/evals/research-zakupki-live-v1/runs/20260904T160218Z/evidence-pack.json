@@ -1,0 +1,42 @@
+{
+  "source_item_id": "0142200001326017137",
+  "status": "NOT_FOUND",
+  "findings": [
+    {
+      "question": "Конкретные объекты благоустройства и их адреса (двор, парк, улица, школа и т.п.)",
+      "status": "NOT_FOUND",
+      "answer": "",
+      "evidence": []
+    },
+    {
+      "question": "Состав и перечень малых архитектурных форм",
+      "status": "NOT_FOUND",
+      "answer": "",
+      "evidence": []
+    },
+    {
+      "question": "Заказчик и ориентировочные сроки выполнения работ",
+      "status": "NOT_FOUND",
+      "answer": "",
+      "evidence": []
+    },
+    {
+      "question": "Связь с существующим проектом благоустройства (если есть)",
+      "status": "NOT_FOUND",
+      "answer": "",
+      "evidence": []
+    }
+  ],
+  "unresolved": [
+    "Закупка 0142200001326017137 не найдена в настроенном индексе EIS: все вызовы MCP-инструментов (get_procurement, list_procurement_documents, list_procurement_attachments) вернули PROCUREMENT_NOT_FOUND. Инструменты принимают только registry_id; параметр source_url в схеме отсутствует, поэтому альтернативный путь через source_url недоступен. Проверьте корректность registry_id или доступность карточки в индексе."
+  ],
+  "sources": [
+    {
+      "source_url": "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017137",
+      "source_type": "CARD",
+      "document_id": "",
+      "document_name": "",
+      "fact": "Карточка закупки не найдена в настроенном EIS-индексе: инструменты вернули PROCUREMENT_NOT_FOUND, данные не извлечены."
+    }
+  ]
+}

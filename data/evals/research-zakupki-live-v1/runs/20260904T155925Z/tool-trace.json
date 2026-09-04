@@ -1,0 +1,11 @@
+{
+  "source_url": "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017137",
+  "fallback_search_resolver": "NOT_USED (ZAKUPKI_SEARCH_URL intentionally empty)",
+  "tools": [
+    "get_procurement",
+    "list_procurement_documents",
+    "list_procurement_attachments",
+    "get_procurement_attachment"
+  ],
+  "trace_basis": "Evidence Pack provenance and successful MCP calls with empty search resolver configuration"
+}

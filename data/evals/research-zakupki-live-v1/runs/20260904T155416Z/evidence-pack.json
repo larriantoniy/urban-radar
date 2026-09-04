@@ -1,0 +1,68 @@
+{
+  "source_item_id": "0142200001326017137",
+  "status": "NOT_FOUND",
+  "findings": [
+    {
+      "question": "Конкретные объекты благоустройства и их адреса (двор, парк, улица, школа и т.п.)",
+      "status": "NOT_FOUND",
+      "answer": "Не подтверждено. Карточка закупки по registry_id 0142200001326017137 не была найдена в настроенном поисковом ответе EIS (PROCUREMENT_NOT_FOUND); документы и вложения по этому номеру недоступны, поэтому данные об объектах благоустройства и их адресах отсутствуют.",
+      "evidence": [
+        {
+          "source_url": "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017137",
+          "source_type": "CARD",
+          "document_id": "",
+          "document_name": "",
+          "fact": "MCP get_procurement вернул PROCUREMENT_NOT_FOUND: registry_id не найден в настроенном поисковом ответе EIS."
+        }
+      ]
+    },
+    {
+      "question": "Состав и перечень малых архитектурных форм",
+      "status": "NOT_FOUND",
+      "answer": "Не подтверждено. Карточка закупки по registry_id 0142200001326017137 не найдена; перечень малых архитектурных форм в доступных первичных источниках отсутствует.",
+      "evidence": [
+        {
+          "source_url": "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017137",
+          "source_type": "CARD",
+          "document_id": "",
+          "document_name": "",
+          "fact": "MCP get_procurement вернул PROCUREMENT_NOT_FOUND: registry_id не найден в настроенном поисковом ответе EIS."
+        }
+      ]
+    },
+    {
+      "question": "Заказчик и ориентировочные сроки выполнения работ",
+      "status": "NOT_FOUND",
+      "answer": "Не подтверждено. Карточка закупки по registry_id 0142200001326017137 не найдена; сведения о заказчике и сроках выполнения работ в доступных первичных источниках отсутствуют.",
+      "evidence": [
+        {
+          "source_url": "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017137",
+          "source_type": "CARD",
+          "document_id": "",
+          "document_name": "",
+          "fact": "MCP get_procurement вернул PROCUREMENT_NOT_FOUND: registry_id не найден в настроенном поисковом ответе EIS."
+        }
+      ]
+    },
+    {
+      "question": "Связь с существующим проектом благоустройства (если есть)",
+      "status": "NOT_FOUND",
+      "answer": "Не подтверждено. Карточка закупки по registry_id 0142200001326017137 не найдена; информация о связи с существующим проектом благоустройства в доступных первичных источниках отсутствует.",
+      "evidence": [
+        {
+          "source_url": "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017137",
+          "source_type": "CARD",
+          "document_id": "",
+          "document_name": "",
+          "fact": "MCP get_procurement вернул PROCUREMENT_NOT_FOUND: registry_id не найден в настроенном поисковом ответе EIS."
+        }
+      ]
+    }
+  ],
+  "unresolved": [
+    "Карточка закупки 0142200001326017137 не найдена в настроенном поисковом ответе EIS; список документов и вложений также вернул PROCUREMENT_NOT_FOUND. Позднее MCP-сервер urban-radar-zakupki стал недоступен (3 последовательных сбоя подряд)."
+  ],
+  "sources": [
+    "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017137"
+  ]
+}
