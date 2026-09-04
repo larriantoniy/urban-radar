@@ -97,3 +97,33 @@ request per item for enrichment. It does not paginate, use a browser, bypass
 CAPTCHA, or alter the deterministic source filter. HTML selectors are isolated
 in `zakupki/html_search.go`; the existing business filtering remains in
 `zakupki/filter.go`.
+
+### Canonical URL resolution
+
+Historical captures may contain a known provenance bug: the first `regNumber`
+anchor in a 44-FZ result could be the electronic-signature modal
+(`printForm/listModal.html`). New parsing selects the structured
+`.registry-entry__header-mid__number a` link instead and preserves the
+notice-specific `.../view/common-info.html` URL supplied by EIS. The MCP uses
+the same resolver through `ZAKUPKI_SEARCH_URL`; it never guesses `ea20/eap20`
+or falls back to a print-form modal. Historical evaluation artifacts are not
+rewritten.
+
+## On-demand evidence access (Zakupki MCP)
+
+The source ingestion path remains separate from evidence lookup:
+
+```text
+EIS → Zakupki Source → SourceItem → Discovery → Editor
+EIS → Zakupki MCP → Research Agent
+```
+
+Run `go run ./cmd/zakupki-mcp` to expose three stdio MCP tools for a future
+Research Agent: `get_procurement`, `list_procurement_documents`, and
+`get_procurement_document`. All inputs are registry IDs (and, for the last
+tool, a document ID returned by the listing tool); arbitrary URLs are rejected.
+The server reuses the verified HTTP client, card fetcher and card parser. It
+returns primary-source provenance and stable structured errors. Downloads are
+bounded; V0 extracts text from HTML, XML and plain text only. PDF, DOCX and
+XLSX currently return `UNSUPPORTED_DOCUMENT_TYPE`. Configure `ZAKUPKI_CA_FILE`
+when the host requires the independently obtained official CA bundle.

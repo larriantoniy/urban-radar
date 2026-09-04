@@ -2,6 +2,7 @@ package zakupki
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -44,6 +45,16 @@ func TestCardParserUsesMetaTitle(t *testing.T) {
 	p, err := ParseProcurementCard([]byte(`<html><head><meta property="og:title" content="Тендер на дорогу"/></head><body>card</body></html>`), Procurement{ID: "1", URL: "https://example/1"})
 	if err != nil || p.Object != "Тендер на дорогу" {
 		t.Fatalf("p=%#v err=%v", p, err)
+	}
+}
+
+func TestSignatureModalRejectedAsCard(t *testing.T) {
+	b, err := os.ReadFile("testdata/signature_modal.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseProcurementCard(b, Procurement{ID: "333", URL: "https://zakupki.gov.ru/x"}); err == nil || !strings.Contains(err.Error(), "missing procurement object") {
+		t.Fatalf("err=%v", err)
 	}
 }
 

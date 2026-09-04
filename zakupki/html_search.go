@@ -130,12 +130,9 @@ func ParseSearchHTML(data []byte, base *url.URL) ([]SearchHTMLEntry, error) {
 	var walk func(*html.Node)
 	walk = func(n *html.Node) {
 		if n.Type == html.ElementNode && n.Data == "div" && classHas(n, "search-registry-entry-block") {
-			var number *html.Node
-			findDesc(n, func(x *html.Node) bool {
-				return x.Type == html.ElementNode && x.Data == "a" && stableRegistryID(attr(x, "href"), "") != ""
-			}, &number)
+			number := canonicalNumberLink(n)
 			if number != nil {
-				id := stableRegistryID(attr(number, "href"), "")
+				id := registryIDFromLinkOrText(attr(number, "href"), nodeText(number))
 				if !seen[id] {
 					link := attr(number, "href")
 					if base != nil {
@@ -157,6 +154,51 @@ func ParseSearchHTML(data []byte, base *url.URL) ([]SearchHTMLEntry, error) {
 		return nil, fmt.Errorf("zakupki search HTML parse: no procurement cards")
 	}
 	return out, nil
+}
+
+// CanonicalProcurementURL returns the notice card URL supplied by the EIS
+// search result. It deliberately ignores print/signature/modal links.
+func CanonicalProcurementURL(entry SearchHTMLEntry) (string, error) {
+	return canonicalProcurementURL(entry, "zakupki.gov.ru")
+}
+
+func canonicalProcurementURL(entry SearchHTMLEntry, expectedHost string) (string, error) {
+	if entry.ID == "" || entry.URL == "" {
+		return "", fmt.Errorf("zakupki: search entry has no canonical procurement URL")
+	}
+	u, err := url.Parse(entry.URL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host != expectedHost {
+		return "", fmt.Errorf("zakupki: invalid canonical procurement URL")
+	}
+	if strings.Contains(u.Path, "/printForm/") || strings.Contains(u.Path, "/signview/") || strings.Contains(u.Path, "listModal") {
+		return "", fmt.Errorf("zakupki: non-canonical procurement URL")
+	}
+	return u.String(), nil
+}
+
+func canonicalNumberLink(card *html.Node) *html.Node {
+	var block *html.Node
+	findDesc(card, func(x *html.Node) bool {
+		return x.Type == html.ElementNode && classHas(x, "registry-entry__header-mid__number")
+	}, &block)
+	if block == nil {
+		return nil
+	}
+	var link *html.Node
+	findDesc(block, func(x *html.Node) bool {
+		return x.Type == html.ElementNode && x.Data == "a" && registryIDFromLinkOrText(attr(x, "href"), nodeText(x)) != ""
+	}, &link)
+	return link
+}
+
+func registryIDFromLinkOrText(link, text string) string {
+	if id := stableRegistryID(link, ""); id != "" {
+		return id
+	}
+	if m := regexp.MustCompile(`\b([0-9]{11,20})\b`).FindStringSubmatch(text); len(m) > 1 {
+		return m[1]
+	}
+	return ""
 }
 
 func classHas(n *html.Node, value string) bool {

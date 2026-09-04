@@ -32,3 +32,21 @@ func TestParseSearchHTMLMalformedCard(t *testing.T) {
 		t.Fatal("expected no cards error")
 	}
 }
+
+func TestParseSearchHTMLCanonicalLinkWinsOverPrintForms(t *testing.T) {
+	b, err := os.ReadFile("testdata/search_canonical.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, _ := url.Parse("https://zakupki.gov.ru/epz/order/extendedsearch/results.html")
+	items, err := ParseSearchHTML(b, base)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("items=%#v err=%v", items, err)
+	}
+	if items[0].ID != "333" || items[0].URL != "https://zakupki.gov.ru/epz/order/notice/eap20/view/common-info.html?regNumber=333" {
+		t.Fatalf("canonical=%#v", items[0])
+	}
+	if items[0].Object != "Ремонт школы" || items[0].Stage != "Подача заявок" || items[0].Law != "44-ФЗ Запрос котировок" || items[0].Price != 900000 {
+		t.Fatalf("fields=%#v", items[0])
+	}
+}
