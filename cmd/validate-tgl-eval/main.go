@@ -34,7 +34,9 @@ func main() {
 		fail(err)
 	}
 	ids, urls := make(map[string]struct{}), make(map[string]struct{})
-	decisions := map[string]bool{"PUBLISH": true, "IGNORE": true, "RESEARCH": true, "UPDATE_PROJECT": true}
+	// Human ground truth is binary at this evaluation boundary. Rich Editor
+	// decisions are projected to PUBLISH or SKIP by the review dataset.
+	decisions := map[string]bool{"PUBLISH": true, "SKIP": true}
 	for index, entry := range items {
 		prefix := fmt.Sprintf("item %d", index)
 		if entry.ID == "" {

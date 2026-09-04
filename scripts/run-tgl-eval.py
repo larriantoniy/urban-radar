@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DATASET = ROOT / "data/evals/tgl-v0/items.json"
 RUNS = ROOT / "data/evals/tgl-v0/runs"
 DISCOVERY_PROMPT = ROOT / "agents/discovery/prompt.md"
-EDITOR_PROMPT = ROOT / "agents/editor/prompt.md"
+EDITOR_PROMPT = ROOT / "agents/editor/prompt-v1.md"
 
 
 def sha256(path: Path) -> str:
@@ -105,8 +105,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--editor-prompt",
-        default="agents/editor/prompt.md",
-        help="Editor prompt path, relative to the project root (default: agents/editor/prompt.md)",
+        default="agents/editor/prompt-v1.md",
+        help="Editor prompt path, relative to the project root (default: agents/editor/prompt-v1.md)",
     )
     args = parser.parse_args()
 
@@ -137,6 +137,7 @@ def main() -> int:
     editor_usage_paths: list[Path] = []
 
     for index, item in enumerate(eligible, start=1):
+        error_count_before = len(runtime_errors)
         item_dir = work_dir / f"{index:03d}-{item['id']}"
         item_dir.mkdir()
         discovery_output = item_dir / "discovery-output.json"
@@ -166,24 +167,28 @@ def main() -> int:
             except (json.JSONDecodeError, ValueError) as exc:
                 runtime_errors.append({"id": item["id"], "stage": "discovery", "error": str(exc)})
 
-        ok, error = run_hermes(editor_input(editor_prompt, discovery), "context_engine", editor_output, editor_usage)
-        if not ok:
-            runtime_errors.append({"id": item["id"], "stage": "editor", "error": error})
-        else:
-            try:
-                editor = read_json(editor_output)
-                if not isinstance(editor, dict) or not isinstance(editor.get("decisions"), list):
-                    raise ValueError("missing decisions array")
-                for decision in editor["decisions"]:
-                    if decision.get("source_url") == item["url"]:
-                        editor_decision = decision.get("decision")
-                        editor_reason = decision.get("reason", "")
-                        break
-            except (json.JSONDecodeError, ValueError) as exc:
-                runtime_errors.append({"id": item["id"], "stage": "editor", "error": str(exc)})
+        if discovery_result == "CANDIDATE":
+            ok, error = run_hermes(editor_input(editor_prompt, discovery), "context_engine", editor_output, editor_usage)
+            if not ok:
+                runtime_errors.append({"id": item["id"], "stage": "editor", "error": error})
+            else:
+                try:
+                    editor = read_json(editor_output)
+                    if not isinstance(editor, dict) or not isinstance(editor.get("decisions"), list):
+                        raise ValueError("missing decisions array")
+                    for decision in editor["decisions"]:
+                        if decision.get("source_url") == item["url"]:
+                            editor_decision = decision.get("decision")
+                            editor_reason = decision.get("reason", "")
+                            break
+                    if editor_decision not in {"PUBLISH", "IGNORE", "RESEARCH", "UPDATE_PROJECT"}:
+                        raise ValueError("missing or unsupported editor decision")
+                except (json.JSONDecodeError, ValueError) as exc:
+                    runtime_errors.append({"id": item["id"], "stage": "editor", "error": str(exc)})
 
         expected_publish = item["human_editor_decision"] == "PUBLISH"
         system_publish = discovery_result == "CANDIDATE" and editor_decision == "PUBLISH"
+        status = "ERROR" if len(runtime_errors) > error_count_before else "SUCCESS"
         predictions.append(
             {
                 "id": item["id"],
@@ -192,6 +197,7 @@ def main() -> int:
                 "human_discovery": item["human_discovery"],
                 "human_decision": item["human_editor_decision"],
                 "expected_publish": expected_publish,
+                "status": status,
                 "discovery_result": discovery_result,
                 "editor_decision": editor_decision,
                 "editor_reason": editor_reason,
@@ -199,14 +205,19 @@ def main() -> int:
             }
         )
 
-    tp = sum(p["expected_publish"] and p["system_publish"] for p in predictions)
-    tn = sum(not p["expected_publish"] and not p["system_publish"] for p in predictions)
-    fp = sum(not p["expected_publish"] and p["system_publish"] for p in predictions)
-    fn = sum(p["expected_publish"] and not p["system_publish"] for p in predictions)
+    successful = [p for p in predictions if p["status"] == "SUCCESS"]
+    tp = sum(p["expected_publish"] and p["system_publish"] for p in successful)
+    tn = sum(not p["expected_publish"] and not p["system_publish"] for p in successful)
+    fp = sum(not p["expected_publish"] and p["system_publish"] for p in successful)
+    fn = sum(p["expected_publish"] and not p["system_publish"] for p in successful)
     precision = rate(tp, tp + fp)
     recall = rate(tp, tp + fn)
     metrics = {
-        "evaluated": len(predictions),
+        "attempted": len(predictions),
+        "successful": len(successful),
+        "errors": len(predictions) - len(successful),
+        "error_rate": rate(len(predictions) - len(successful), len(predictions)),
+        "evaluated": len(successful),
         "tp": tp,
         "tn": tn,
         "fp": fp,
@@ -214,14 +225,14 @@ def main() -> int:
         "precision": precision,
         "recall": recall,
         "f1": rate(2 * precision * recall, precision + recall),
-        "accuracy": rate(tp + tn, len(predictions)),
+        "accuracy": rate(tp + tn, len(successful)),
     }
     errors = {
         "false_positives": [
-            error_record(p) for p in predictions if not p["expected_publish"] and p["system_publish"]
+            error_record(p) for p in successful if not p["expected_publish"] and p["system_publish"]
         ],
         "false_negatives": [
-            error_record(p) for p in predictions if p["expected_publish"] and not p["system_publish"]
+            error_record(p) for p in successful if p["expected_publish"] and not p["system_publish"]
         ],
         "runtime_errors": runtime_errors,
     }
