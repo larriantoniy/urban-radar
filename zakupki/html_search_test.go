@@ -107,3 +107,27 @@ func TestFetchWithOptionsSafetyBoundAndShortResult(t *testing.T) {
 		t.Fatalf("short result=%+v err=%v", res, err)
 	}
 }
+
+func TestFetchWindowUsesPaginationNotItemCount(t *testing.T) {
+	count := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count++
+		for i := 0; i < 60; i++ {
+			fmt.Fprint(w, pageCard(fmt.Sprintf("%011d", count*100+i)))
+		}
+		if count < 3 {
+			fmt.Fprintf(w, `<a class="paginator-button-next" data-pagenumber="%d">next</a>`, count+1)
+		}
+	}))
+	defer srv.Close()
+	s := ZakupkiSearchHTMLSource{URL: srv.URL + "/search?searchString=Tolyatti", Client: srv.Client()}
+	result, err := s.FetchWindow(context.Background(), SearchOptions{PublishDateFrom: time.Now().Add(-24 * time.Hour), PublishDateTo: time.Now(), MaxPages: 5})
+	if err != nil || !result.Complete || result.PagesRead != 3 || len(result.Raw) != 180 {
+		t.Fatalf("complete=%v pages=%d raw=%d err=%v", result.Complete, result.PagesRead, len(result.Raw), err)
+	}
+	count = 0
+	result, err = s.FetchWindow(context.Background(), SearchOptions{MaxPages: 2})
+	if err != nil || result.Complete || result.PagesRead != 2 || len(result.Raw) != 120 {
+		t.Fatalf("bounded complete=%v pages=%d raw=%d err=%v", result.Complete, result.PagesRead, len(result.Raw), err)
+	}
+}

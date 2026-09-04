@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -47,9 +49,11 @@ func newsID(rawURL string) string {
 }
 
 func parseNewsDate(value string) time.Time {
-	parsed, _ := time.Parse("2006-01-02", value)
+	parsed, _ := time.ParseInLocation("2006-01-02", value, samaraLocation)
 	return parsed
 }
+
+var samaraLocation = time.FixedZone("Europe/Samara", 4*60*60)
 
 // Article is a full news item returned by GetNews.
 type Article struct {
@@ -68,6 +72,116 @@ type Client struct {
 type ListOptions struct {
 	Limit int
 	Since time.Time
+}
+
+// WindowResult reports whether archive pagination fully covered the requested
+// temporal window. Complete is false when the safety page bound was reached.
+type WindowResult struct {
+	News      []News
+	PagesRead int
+	Complete  bool
+}
+
+// ListNewsWindow reads every available archive item in [from, to], subject
+// only to maxPages as a crawl safety guard. It never uses an item-count limit.
+func (c *Client) ListNewsWindow(ctx context.Context, from, to time.Time, maxPages int) (WindowResult, error) {
+	if maxPages <= 0 {
+		maxPages = 100
+	}
+	body, err := c.fetch(ctx, cityNewsURL)
+	if err != nil {
+		return WindowResult{}, err
+	}
+	years, err := archiveYears(body, cityNewsURL)
+	if err != nil {
+		return WindowResult{}, err
+	}
+	fromDate := localDay(from)
+	toDate := localDay(to)
+	seen := make(map[string]struct{})
+	var news []News
+	pages := 0
+	for _, yearURL := range years {
+		for pageURL := yearURL; pageURL != ""; {
+			if pages >= maxPages {
+				return WindowResult{News: news, PagesRead: pages, Complete: false}, nil
+			}
+			body, err := c.fetch(ctx, pageURL)
+			if err != nil {
+				return WindowResult{News: news, PagesRead: pages, Complete: false}, err
+			}
+			page, nextURL, err := parseListPage(body, pageURL)
+			if err != nil {
+				return WindowResult{News: news, PagesRead: pages, Complete: false}, err
+			}
+			pages++
+			boundaryReached := false
+			for _, item := range page {
+				published := parseNewsDate(item.PublishedAt)
+				if published.IsZero() {
+					return WindowResult{News: news, PagesRead: pages, Complete: false}, fmt.Errorf("invalid TGL publication date %q", item.PublishedAt)
+				}
+				if published.Before(fromDate) {
+					boundaryReached = true
+					continue
+				}
+				if !toDate.IsZero() && published.After(toDate) {
+					continue
+				}
+				id := newsID(item.URL)
+				if _, ok := seen[id]; ok {
+					continue
+				}
+				seen[id] = struct{}{}
+				news = append(news, item)
+			}
+			if boundaryReached {
+				sortNews(news)
+				return WindowResult{News: news, PagesRead: pages, Complete: true}, nil
+			}
+			pageURL = nextURL
+		}
+		// Archive URLs are year-scoped and returned newest first. Once every
+		// page of the year containing the lower boundary has been read, older
+		// year archives cannot contribute another item to the window.
+		if year := archiveYear(yearURL); year > 0 && year <= fromDate.Year() {
+			sortNews(news)
+			return WindowResult{News: news, PagesRead: pages, Complete: true}, nil
+		}
+	}
+	sortNews(news)
+	return WindowResult{News: news, PagesRead: pages, Complete: true}, nil
+}
+
+func archiveYear(rawURL string) int {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return 0
+	}
+	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	if len(parts) == 0 {
+		return 0
+	}
+	year, _ := strconv.Atoi(parts[len(parts)-1])
+	return year
+}
+
+func localDay(value time.Time) time.Time {
+	if value.IsZero() {
+		return time.Time{}
+	}
+	value = value.In(samaraLocation)
+	return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, samaraLocation)
+}
+
+func sortNews(news []News) {
+	sort.SliceStable(news, func(i, j int) bool {
+		a, b := parseNewsDate(news[i].PublishedAt), parseNewsDate(news[j].PublishedAt)
+		if !a.Equal(b) {
+			return a.Before(b)
+		}
+		return newsID(news[i].URL) < newsID(news[j].URL)
+	})
 }
 
 // NewClient creates a client with the supplied request timeout.

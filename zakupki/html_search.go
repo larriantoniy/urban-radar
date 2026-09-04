@@ -28,6 +28,7 @@ type SearchFetchResult struct {
 	Raw         []RawProcurement `json:"raw"`
 	PagesRead   int              `json:"pages_read"`
 	EntriesSeen int              `json:"entries_seen"`
+	Complete    bool             `json:"complete"`
 }
 
 func NewZakupkiSearchHTMLSource(client *http.Client) ZakupkiSearchHTMLSource {
@@ -48,11 +49,23 @@ func (s ZakupkiSearchHTMLSource) Fetch(ctx context.Context, q Query) ([]RawProcu
 // FetchWithOptions reads bounded EIS pages while preserving every configured
 // search parameter and changing only pageNumber between requests.
 func (s ZakupkiSearchHTMLSource) FetchWithOptions(ctx context.Context, opts SearchOptions) (SearchFetchResult, error) {
+	return s.fetchWithOptions(ctx, opts, true)
+}
+
+// FetchWindow reads the complete configured EIS date window. MaxPages remains
+// a safety guard; reaching it returns Complete=false and must not advance a
+// source checkpoint. There is deliberately no item-count correctness limit.
+func (s ZakupkiSearchHTMLSource) FetchWindow(ctx context.Context, opts SearchOptions) (SearchFetchResult, error) {
+	opts.Limit = 0
+	return s.fetchWithOptions(ctx, opts, false)
+}
+
+func (s ZakupkiSearchHTMLSource) fetchWithOptions(ctx context.Context, opts SearchOptions, boundedItems bool) (SearchFetchResult, error) {
 	limit := opts.Limit
-	if limit <= 0 {
+	if boundedItems && limit <= 0 {
 		limit = 20
 	}
-	if limit > 100 {
+	if boundedItems && limit > 100 {
 		limit = 100
 	}
 	maxPages := opts.MaxPages
@@ -79,9 +92,10 @@ func (s ZakupkiSearchHTMLSource) FetchWithOptions(ctx context.Context, opts Sear
 	values.Set("recordsPerPage", "_10")
 	page := 1
 	seen := map[string]bool{}
-	all := make([]SearchHTMLEntry, 0, limit)
+	all := make([]SearchHTMLEntry, 0, max(0, limit))
 	pagesRead := 0
-	for pagesRead < maxPages && len(all) < limit {
+	complete := false
+	for pagesRead < maxPages && (!boundedItems || len(all) < limit) {
 		values.Set("pageNumber", fmt.Sprintf("%d", page))
 		pageURL := *base
 		pageURL.RawQuery = values.Encode()
@@ -98,13 +112,14 @@ func (s ZakupkiSearchHTMLSource) FetchWithOptions(ctx context.Context, opts Sear
 			if entry.ID != "" && !seen[entry.ID] {
 				seen[entry.ID] = true
 				all = append(all, entry)
-				if len(all) >= limit {
+				if boundedItems && len(all) >= limit {
 					break
 				}
 			}
 		}
 		next := nextSearchPage(body, page)
 		if next <= page || len(entries) == 0 {
+			complete = true
 			break
 		}
 		page = next
@@ -116,7 +131,7 @@ func (s ZakupkiSearchHTMLSource) FetchWithOptions(ctx context.Context, opts Sear
 		}
 		return all[i].ID < all[j].ID
 	})
-	return SearchFetchResult{Raw: searchEntriesToRaw(all, limit), PagesRead: pagesRead, EntriesSeen: len(all)}, nil
+	return SearchFetchResult{Raw: searchEntriesToRawLimit(all, limit, boundedItems), PagesRead: pagesRead, EntriesSeen: len(all), Complete: complete}, nil
 }
 
 func (s ZakupkiSearchHTMLSource) ParsePage(body []byte, q Query) ([]RawProcurement, error) {
@@ -213,10 +228,14 @@ func searchEntriesToRaw(entries []SearchHTMLEntry, requested int) []RawProcureme
 	if limit > 100 {
 		limit = 100
 	}
+	return searchEntriesToRawLimit(entries, limit, true)
+}
+
+func searchEntriesToRawLimit(entries []SearchHTMLEntry, limit int, bounded bool) []RawProcurement {
 	seen := map[string]bool{}
 	out := make([]RawProcurement, 0, limit)
 	for _, e := range entries {
-		if len(out) >= limit || e.ID == "" || seen[e.ID] {
+		if (bounded && len(out) >= limit) || e.ID == "" || seen[e.ID] {
 			continue
 		}
 		seen[e.ID] = true
