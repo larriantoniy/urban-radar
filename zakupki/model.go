@@ -1,9 +1,11 @@
 // Package zakupki normalizes procurement notices from Russia's EIS/zakupki
-// source and filters them before they reach the existing Discovery agent.
+// source before they reach the existing Discovery agent.
 package zakupki
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	"urban-radar/source"
@@ -84,17 +86,16 @@ type FilterResult struct {
 	CategorySignals []string  `json:"category_signals,omitempty"`
 }
 
-type Candidate struct {
+type NormalizedItem struct {
 	Procurement Procurement       `json:"procurement"`
 	SourceItem  source.SourceItem `json:"source_item"`
-	Filter      FilterResult      `json:"filter"`
 }
 
-// Normalize parses, deduplicates by the stable EIS identifier and evaluates
-// every document without invoking an LLM.
-func Normalize(raws []RawProcurement, retrievedAt time.Time) ([]Candidate, error) {
+// Normalize parses and deduplicates by the stable EIS identifier without
+// making editorial decisions or invoking an LLM.
+func Normalize(raws []RawProcurement, retrievedAt time.Time) ([]NormalizedItem, error) {
 	seen := make(map[string]struct{}, len(raws))
-	result := make([]Candidate, 0, len(raws))
+	result := make([]NormalizedItem, 0, len(raws))
 	for _, raw := range raws {
 		procurement, err := ParseRaw(raw)
 		if err != nil {
@@ -104,14 +105,15 @@ func Normalize(raws []RawProcurement, retrievedAt time.Time) ([]Candidate, error
 			continue
 		}
 		seen[procurement.ID] = struct{}{}
-		result = append(result, Candidate{Procurement: procurement, SourceItem: procurement.SourceItem(retrievedAt), Filter: Evaluate(procurement)})
+		result = append(result, NormalizedItem{Procurement: procurement, SourceItem: procurement.SourceItem(retrievedAt)})
 	}
 	return result, nil
 }
 
 func (p Procurement) SourceItem(retrievedAt time.Time) source.SourceItem {
 	metadata := map[string]any{
-		"law": p.Law, "customer_name": p.CustomerName, "customer_inn": p.CustomerINN,
+		"registry_id": p.ID,
+		"law":         p.Law, "customer_name": p.CustomerName, "customer_inn": p.CustomerINN,
 		"customer_region": p.CustomerRegion, "price": p.Price, "currency": p.Currency,
 		"stage": p.Stage, "delivery_place": p.DeliveryPlace, "address": p.Address,
 		"okpd2": p.OKPD2, "contract_date": p.ContractDate, "tender_date": p.TenderDate,
@@ -119,9 +121,29 @@ func (p Procurement) SourceItem(retrievedAt time.Time) source.SourceItem {
 	}
 	return source.SourceItem{
 		Source: SourceName, SourceItemID: p.ID, URL: p.URL, Title: p.Object,
-		Summary: procurementSummary(p), PublishedAt: p.PublishedAt,
+		Summary: procurementSummary(p), Text: procurementText(p), PublishedAt: p.PublishedAt,
 		RetrievedAt: retrievedAt, Metadata: metadata,
 	}
+}
+
+func procurementText(p Procurement) string {
+	parts := []string{p.Object}
+	if p.CustomerName != "" {
+		parts = append(parts, "Заказчик: "+p.CustomerName)
+	}
+	if p.DeliveryPlace != "" {
+		parts = append(parts, "Место: "+p.DeliveryPlace)
+	}
+	if p.Address != "" {
+		parts = append(parts, "Адрес: "+p.Address)
+	}
+	if p.Price != 0 {
+		parts = append(parts, fmt.Sprintf("Цена: %.2f %s", p.Price, p.Currency))
+	}
+	if p.Stage != "" {
+		parts = append(parts, "Этап: "+p.Stage)
+	}
+	return strings.Join(parts, ". ")
 }
 
 func procurementSummary(p Procurement) string {

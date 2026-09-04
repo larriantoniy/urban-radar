@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"urban-radar/source"
@@ -60,8 +59,6 @@ func main() {
 	normalizationErrors := make([]string, 0)
 	enrichmentErrors := make([]string, 0)
 	searchParsed, enrichmentSuccess := 0, 0
-	counts := map[zakupki.Relevance]int{}
-	candidates := 0
 	for index, document := range raw {
 		p, err := zakupki.ParseRaw(document)
 		if err != nil {
@@ -89,17 +86,12 @@ func main() {
 			normalizationErrors = append(normalizationErrors, fmt.Sprintf("%d: missing procurement object after enrichment", index+1))
 			continue
 		}
-		filter := zakupki.Evaluate(p)
-		counts[filter.Relevance]++
-		if filter.Candidate {
-			candidates++
-		}
-		result = append(result, probeItem{Procurement: p, Filter: filter, SourceItem: p.SourceItem(time.Now().UTC())})
+		result = append(result, probeItem{Procurement: p, SourceItem: p.SourceItem(time.Now().UTC())})
 	}
 	if *sourceName == "html" || *sourceName == "rss" {
 		fmt.Printf("search entries found: %d\nsearch entries parsed: %d\nenrichment success: %d\nenrichment failure: %d\n", len(raw), searchParsed, enrichmentSuccess, len(enrichmentErrors))
 	}
-	fmt.Printf("raw documents: %d\nnormalized: %d\nnormalization errors: %d\nrelevant: %d\nmaybe_relevant: %d\nirrelevant: %d\ncandidate=true: %d\ncandidate=false: %d\n", len(raw), len(result), len(normalizationErrors), counts[zakupki.Relevant], counts[zakupki.MaybeRelevant], counts[zakupki.Irrelevant], candidates, len(result)-candidates)
+	fmt.Printf("raw documents: %d\nnormalized: %d\nnormalization errors: %d\n", len(raw), len(result), len(normalizationErrors))
 	for _, errorText := range normalizationErrors {
 		fmt.Fprintf(os.Stderr, "normalization error: %s\n", errorText)
 	}
@@ -107,7 +99,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "enrichment error: %s\n", errorText)
 	}
 	for _, item := range result {
-		fmt.Fprintf(os.Stdout, "- %s | %s | %s | %.2f %s | %s | %s | %s | %s | candidate=%t | %s\n", item.Procurement.ID, item.Procurement.Object, item.Procurement.CustomerName, item.Procurement.Price, item.Procurement.Currency, item.Procurement.DeliveryPlace, item.Procurement.PublishedAt.Format("2006-01-02"), item.Procurement.Stage, item.Procurement.URL, item.Filter.Candidate, strings.Join(item.Filter.Reasons, "; "))
+		fmt.Fprintf(os.Stdout, "- %s | %s | %s | %.2f %s | %s | %s | %s | %s\n", item.Procurement.ID, item.Procurement.Object, item.Procurement.CustomerName, item.Procurement.Price, item.Procurement.Currency, item.Procurement.DeliveryPlace, item.Procurement.PublishedAt.Format("2006-01-02"), item.Procurement.Stage, item.Procurement.URL)
 	}
 	if *export != "" {
 		if err := writeExport(*export, result); err != nil {
@@ -131,36 +123,32 @@ func validateLimit(limit int) error {
 }
 
 type probeItem struct {
-	Procurement zakupki.Procurement  `json:"procurement"`
-	Filter      zakupki.FilterResult `json:"filter"`
-	SourceItem  source.SourceItem    `json:"source_item"`
+	Procurement zakupki.Procurement `json:"procurement"`
+	SourceItem  source.SourceItem   `json:"source_item"`
 }
 
 type exportItem struct {
-	ID               string            `json:"id"`
-	SourceURL        string            `json:"source_url"`
-	Object           string            `json:"object"`
-	CustomerName     string            `json:"customer_name"`
-	CustomerRegion   string            `json:"customer_region"`
-	Price            float64           `json:"price"`
-	Currency         string            `json:"currency,omitempty"`
-	DeliveryPlace    string            `json:"delivery_place"`
-	Address          string            `json:"address"`
-	Stage            string            `json:"stage"`
-	PublishedAt      string            `json:"published_at,omitempty"`
-	UpdatedAt        string            `json:"updated_at,omitempty"`
-	Law              string            `json:"law,omitempty"`
-	Relevance        zakupki.Relevance `json:"relevance"`
-	RelevanceReasons []string          `json:"relevance_reasons"`
-	Candidate        bool              `json:"candidate"`
-	HumanLabel       *string           `json:"human_label"`
+	ID             string  `json:"id"`
+	SourceURL      string  `json:"source_url"`
+	Object         string  `json:"object"`
+	CustomerName   string  `json:"customer_name"`
+	CustomerRegion string  `json:"customer_region"`
+	Price          float64 `json:"price"`
+	Currency       string  `json:"currency,omitempty"`
+	DeliveryPlace  string  `json:"delivery_place"`
+	Address        string  `json:"address"`
+	Stage          string  `json:"stage"`
+	PublishedAt    string  `json:"published_at,omitempty"`
+	UpdatedAt      string  `json:"updated_at,omitempty"`
+	Law            string  `json:"law,omitempty"`
+	HumanLabel     *string `json:"human_label"`
 }
 
 func writeExport(path string, items []probeItem) error {
 	exported := make([]exportItem, 0, len(items))
 	for _, item := range items {
 		p := item.Procurement
-		exported = append(exported, exportItem{ID: p.ID, SourceURL: p.URL, Object: p.Object, CustomerName: p.CustomerName, CustomerRegion: p.CustomerRegion, Price: p.Price, Currency: p.Currency, DeliveryPlace: p.DeliveryPlace, Address: p.Address, Stage: p.Stage, PublishedAt: formatTime(p.PublishedAt), UpdatedAt: formatTime(p.UpdatedAt), Law: p.Law, Relevance: item.Filter.Relevance, RelevanceReasons: item.Filter.Reasons, Candidate: item.Filter.Candidate})
+		exported = append(exported, exportItem{ID: p.ID, SourceURL: p.URL, Object: p.Object, CustomerName: p.CustomerName, CustomerRegion: p.CustomerRegion, Price: p.Price, Currency: p.Currency, DeliveryPlace: p.DeliveryPlace, Address: p.Address, Stage: p.Stage, PublishedAt: formatTime(p.PublishedAt), UpdatedAt: formatTime(p.UpdatedAt), Law: p.Law})
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err

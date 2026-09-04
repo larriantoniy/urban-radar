@@ -2,16 +2,8 @@
 
 The adapter turns bounded EIS procurement documents into normalized
 `zakupki.Procurement` values and the shared `source.SourceItem` contract. It
-does source-level locality and noise filtering; it never makes the final
-`PUBLISH` decision. Candidates can be sent to the existing Discovery → Editor
-V1 pipeline later.
-
-The deterministic filter marks records `relevant`, `maybe_relevant` or
-`irrelevant`, with human-readable `relevance_reasons`. Explicit Togliatti
-locations and municipal institutions are strong signals. Samara-region-only
-records without a concrete city signal are not forwarded. Category and price
-signals reduce routine procurement noise without a permanent category
-whitelist.
+does not make editorial relevance or candidate decisions. Every technically
+valid normalized item is passed to the existing Discovery → Editor V1 pipeline.
 
 EIS access is behind `zakupki.ProcurementSource`. `EISClient` uses the
 configured `ZAKUPKI_EIS_URL` and optional `ZAKUPKI_EIS_TOKEN` environment
@@ -41,6 +33,21 @@ The V0 evaluation candidates are in `data/evals/zakupki-v0/items.json`; fill
 Current limitations: EIS response schemas and credentials are deployment
 specific; this milestone provides the adapter boundary and safe bounded probe,
 not mass crawling or agent orchestration.
+
+The former deterministic locality/noise filter is retained only in
+`zakupki/filter.go` and `cmd/zakupki-eval` to reproduce the rejected historical
+real baseline (F1=0.1600). It is not part of runtime ingestion.
+
+## Runtime pipeline decision
+
+Old: `Zakupki → deterministic relevance filter → candidate`.
+
+Current: `Zakupki → parse/normalize → SourceItem → Discovery Agent → Editor V1`.
+
+The old filter was removed from runtime after the real-world baseline produced
+TP=2, TN=26, FP=20, FN=1 and F1=0.1600. This is an architectural decision
+derived from that evaluation; the historical evaluator and dataset remain
+available for reproducibility.
 
 ## RSS-first live source
 

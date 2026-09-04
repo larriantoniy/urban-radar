@@ -84,6 +84,12 @@ func TestFixtureSourceLimitAndSourceItem(t *testing.T) {
 	if item.Source != SourceName || item.SourceItemID == "" || item.Title == "" {
 		t.Fatalf("bad source item: %#v", item)
 	}
+	if item.Text == "" || item.Metadata["registry_id"] == nil {
+		t.Fatalf("source item should contain factual text/registry metadata: %#v", item)
+	}
+	if _, ok := item.Metadata["candidate"]; ok {
+		t.Fatal("source item must not contain editorial candidate decision")
+	}
 }
 
 func TestEISDisabledWithoutEndpoint(t *testing.T) {

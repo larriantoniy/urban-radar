@@ -14,8 +14,7 @@ func TestWriteExportAndCaptureMetadata(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "items.json")
 	p := zakupki.Procurement{ID: "1", URL: "https://zakupki.gov.ru/1", Object: "Ремонт дороги", Price: 1200, Currency: "RUB", PublishedAt: time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC)}
-	filter := zakupki.Evaluate(p)
-	items := []probeItem{{Procurement: p, Filter: filter}}
+	items := []probeItem{{Procurement: p, SourceItem: p.SourceItem(time.Now().UTC())}}
 	if err := writeExport(path, items); err != nil {
 		t.Fatal(err)
 	}

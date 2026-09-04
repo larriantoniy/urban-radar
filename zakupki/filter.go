@@ -1,5 +1,8 @@
 package zakupki
 
+// This file is retained solely for reproducing the rejected real-world
+// baseline. It is not used by runtime ingestion or SourceItem construction.
+
 import (
 	"fmt"
 	"strings"
