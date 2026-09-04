@@ -1,0 +1,492 @@
+[
+  {
+    "id": "32616351507",
+    "title": "«Оказание услуг в области охраны общественного порядка и безопасности (Самарская область, Ставропольский район, Новокуйбышевское; база Новокуйбышевского участка ЦЭС, база Чапаевского участка ЦЭС, база Борского участка ВЭС, база Алексеевского участка ВЭС, Логистический центр, Кинельский участок ЦЭС, Сергиевский участок СЭС, офис Самарских электрических сетей г. Самара ул. Межевая, д. 7, база Нефтегорского участка ВЭС, база Клявлинского участка СЭС, ПС \"Речная\", база Отрадненского участка ВЭС, база Ч.Вершинского участка СЭС, г. Тольятти , Автозаводский район, Южное шоссе 97 «б», ул. Северная д.75, ул. Офицерская, 10 «б»; г. Самара, ул. Ново-Садовая 106, корп. 109)»",
+    "url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616351507",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/001-32616351507/discovery-output.json"
+  },
+  {
+    "id": "32616348836",
+    "title": "Поставка и монтаж кухонной зоны для нужд Государственного бюджетного учреждения здравоохранения Самарской области \" Тольятти нская стоматологическая поликлиника №1\"",
+    "url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616348836",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/002-32616348836/discovery-output.json"
+  },
+  {
+    "id": "0142200001326017153",
+    "title": "Поставка медицинских изделий для государственного бюджетного учреждения здравоохранения Самарской области « Тольятти нская городская клиническая больница №2 имени В.В. Баныкина»",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326017153",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/003-0142200001326017153/discovery-output.json"
+  },
+  {
+    "id": "32616328759",
+    "title": "Выполнение строительно-монтажных работ на объекте: «Газопровод высокого давления 2 категории Самарская обл., г.о. Тольятти , г. Тольятти , ш.Обводное, от газопровода к с.Васильевка до границ участка д.123, стр.1 по ш.Обводное».",
+    "url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616328759",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "CANDIDATE",
+    "positive": true,
+    "raw_output": "work/004-32616328759/discovery-output.json"
+  },
+  {
+    "id": "32616328717",
+    "title": "Выполнение строительно-монтажных работ на объекте: «Технологическое присоединение к сети газораспределения -склада, расположенного: Самарская область, г. Тольятти , Обводное ш., влд.70, стр.3. Газопровод среднего давления от существующего d=100 мм, проложенного к ШГРП №402 до границы з.у.»",
+    "url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616328717",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "CANDIDATE",
+    "positive": true,
+    "raw_output": "work/005-32616328717/discovery-output.json"
+  },
+  {
+    "id": "32616305082",
+    "title": "Выполнение работ в рамках капитального ремонта на территории, примыкающей к объекту капитального ремонта - зданию ГАПОУ СО «ТМК», расположенному по адресу: 445032, Самарская область, г. Тольятти , Южное шоссе, 119, в том числе: - проведение работ по благоустройству территории, примыкающей к объекту капитального ремонта; - проведение работ по обеспечению условий для обучающихся с инвалидностью и ограниченными возможностями здоровья",
+    "url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616305082",
+    "human_label": "CANDIDATE",
+    "status": "SUCCESS",
+    "discovery_result": "CANDIDATE",
+    "positive": true,
+    "raw_output": "work/006-32616305082/discovery-output.json"
+  },
+  {
+    "id": "0142300010026000068",
+    "title": "Оказание услуг по обеспечению участия в форуме «MICE Excellence Forum 2026»",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142300010026000068",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/007-0142300010026000068/discovery-output.json"
+  },
+  {
+    "id": "0142200001326016814",
+    "title": "Выполнение работ по устройству инженерных сетей по объекту \"Благоустройство (электроснабжение и наружное освещение) территории общего пользования (пляж) по адресу: г. Тольятти , Комсомольское шоссе, 34а\" (Самарская область, г. Тольятти , Комсомольское шоссе, уч. с к.н. 63:09:0305025:575, 63:09:0305025:576)\"",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326016814",
+    "human_label": "CANDIDATE",
+    "status": "SUCCESS",
+    "discovery_result": "CANDIDATE",
+    "positive": true,
+    "raw_output": "work/008-0142200001326016814/discovery-output.json"
+  },
+  {
+    "id": "0342300012126000082",
+    "title": "Поставка перчаток хозяйственных (резиновых)",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0342300012126000082",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/009-0342300012126000082/discovery-output.json"
+  },
+  {
+    "id": "0348100015526000516",
+    "title": "Поставка расходных материалов (Наконечник пипетки) для анализатора Лазурит на 2026-2027 гг.",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0348100015526000516",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/010-0348100015526000516/discovery-output.json"
+  },
+  {
+    "id": "0142200001326016453",
+    "title": "Оказание услуг по приготовлению питания по вариативному меню для граждан, находящихся на социальном обслуживании в государственном бюджетном учреждении Самарской области « Тольятти нский дом-интернат для престарелых, инвалидов»",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326016453",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/011-0142200001326016453/discovery-output.json"
+  },
+  {
+    "id": "0348100015526000515",
+    "title": "Поставка медицинских изделий (Кювета для лабораторного анализатора ИВД, одноразового использования; Шарик для измерения одноразовый) на 2026-2027 г.",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0348100015526000515",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/012-0348100015526000515/discovery-output.json"
+  },
+  {
+    "id": "0142200001326017144",
+    "title": "Закупка расходных материалов (реагенты диагностические) для нужд государственного бюджетного учреждения здравоохранения Самарской области \" Тольятти нская городская поликлиника №4\"",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326017144",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/013-0142200001326017144/discovery-output.json"
+  },
+  {
+    "id": "32616351067",
+    "title": "Поставка дизельного топлива через сеть АЗС",
+    "url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616351067",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/014-32616351067/discovery-output.json"
+  },
+  {
+    "id": "0142200001326017140",
+    "title": "Поставка медицинского изделия для системы офтальмологической микрохирургической STELLARIS Vision Enhancement System для Государственного бюджетного учреждения здравоохранения Самарской области \" Тольятти нская городская клиническая больница № 5\"",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326017140",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/015-0142200001326017140/discovery-output.json"
+  },
+  {
+    "id": "0142200001326017139",
+    "title": "Закупка расходных материалов (реагенты диагностические) для нужд государственного бюджетного учреждения здравоохранения Самарской области \" Тольятти нская городская поликлиника №4\"",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326017139",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/016-0142200001326017139/discovery-output.json"
+  },
+  {
+    "id": "0142200001326017137",
+    "title": "Благоустройство объектов (объекта). Ремонт и установка МАФ.",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326017137",
+    "human_label": "CANDIDATE",
+    "status": "SUCCESS",
+    "discovery_result": "CANDIDATE",
+    "positive": true,
+    "raw_output": "work/017-0142200001326017137/discovery-output.json"
+  },
+  {
+    "id": "0373100042426000464",
+    "title": "Оказание услуг в рамках организации и проведения первенства России по теннису (командные соревнования) среди юношей, девушек до 15 лет",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0373100042426000464",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/018-0373100042426000464/discovery-output.json"
+  },
+  {
+    "id": "0348100015526000512",
+    "title": "Поставка реагентов (Гомоцистеин ИВД, контрольный материал; Гомоцистеин ИВД, калибратор) на 2027 г.",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0348100015526000512",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/019-0348100015526000512/discovery-output.json"
+  },
+  {
+    "id": "0348100015526000513",
+    "title": "Поставка реагентов (Гомоцистеин ИВД, набор, ферментный спектрофотометрический анализ) на 2027 г.",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0348100015526000513",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/020-0348100015526000513/discovery-output.json"
+  },
+  {
+    "id": "32616329341",
+    "title": "Выполнение инженерно-геологических изысканий по объектам:Лот №1: «Реконструкция оборудования ПС 110 кВ «ГПП-5000000»г. Тольятти Самарская область;Лот №2: Реконструкция КЛ-10 кВ Ф-Ш-2 от №217/47 до опоры №217/48 (2х0,120 км) Шенталинский район Самарская область",
+    "url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616329341",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "CANDIDATE",
+    "positive": true,
+    "raw_output": "work/021-32616329341/discovery-output.json"
+  },
+  {
+    "id": "32616325376",
+    "title": "Запрос котировок в электронной форме, участниками которого могут быть только субъекты малого и среднего предпринимательства на право заключения договора на выполнение работ по монтажу адресной охранно-тревожной сигнализации",
+    "url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616325376",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/022-32616325376/discovery-output.json"
+  },
+  {
+    "id": "0342300036026000222",
+    "title": "Оказание услуг по ремонту медицинского оборудования для государственного бюджетного учреждения здравоохранения Самарской области « Тольятти нская городская клиническая больница №2 имени В.В.Баныкина»",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0342300036026000222",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "CANDIDATE",
+    "positive": true,
+    "raw_output": "work/023-0342300036026000222/discovery-output.json"
+  },
+  {
+    "id": "0142200001326017134",
+    "title": "Поставка нефтепродуктов (бензин АИ 95; АИ-92)",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326017134",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/024-0142200001326017134/discovery-output.json"
+  },
+  {
+    "id": "32616326719",
+    "title": "Поставка твердотельных накопителей",
+    "url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616326719",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/025-32616326719/discovery-output.json"
+  },
+  {
+    "id": "0142200001326017131",
+    "title": "Поставка лекарственных препаратов для нужд государственного бюджетного учреждения здравоохранения Самарской области \" Тольятти нская городская поликлиника №4\"",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326017131",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/026-0142200001326017131/discovery-output.json"
+  },
+  {
+    "id": "0342300062426000002",
+    "title": "Поставка нефтепродуктов",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0342300062426000002",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/027-0342300062426000002/discovery-output.json"
+  },
+  {
+    "id": "0342200042026000035",
+    "title": "Мягкий инвентарь (обувь одежда постельное)",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0342200042026000035",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/028-0342200042026000035/discovery-output.json"
+  },
+  {
+    "id": "0342300012126000081",
+    "title": "Поставка моющих средств (мыло)",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0342300012126000081",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/029-0342300012126000081/discovery-output.json"
+  },
+  {
+    "id": "0342100014726000083",
+    "title": "Продукты питания (масло сливочное, творог)",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0342100014726000083",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/030-0342100014726000083/discovery-output.json"
+  },
+  {
+    "id": "0342300036026000223",
+    "title": "Поставка медицинских изделий для государственного бюджетного учреждения здравоохранения Самарской области « Тольятти нская городская клиническая больница №2 имени В.В. Баныкина»",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0342300036026000223",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/031-0342300036026000223/discovery-output.json"
+  },
+  {
+    "id": "0142200001326016778",
+    "title": "Поставка лекарственного средства МНН Ондансетрон для Государственного бюджетного учреждения здравоохранения Самарской области \" Тольятти нская городская клиническая больница № 5\"",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326016778",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/032-0142200001326016778/discovery-output.json"
+  },
+  {
+    "id": "0142200001326016777",
+    "title": "Поставка расходных материалов для аппаратов ИВЛ",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326016777",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/033-0142200001326016777/discovery-output.json"
+  },
+  {
+    "id": "0142200001326016830",
+    "title": "Поставка расходных материалов для клинико-диагностической лаборатории для нужд Государственного бюджетного учреждения здравоохранения Самарской области \" Тольятти нская городская клиническая поликлиника № 3\"",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326016830",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/034-0142200001326016830/discovery-output.json"
+  },
+  {
+    "id": "0142200001326016812",
+    "title": "Поставка медицинских изделий для центра амбулаторной кардиологии для нужд Государственного бюджетного учреждения здравоохранения Самарской области « Тольятти нская городская клиническая поликлиника №3»",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326016812",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "CANDIDATE",
+    "positive": true,
+    "raw_output": "work/035-0142200001326016812/discovery-output.json"
+  },
+  {
+    "id": "0142200001326016807",
+    "title": "Поставка лекарственного средства МНН Пембролизумаб для Государственного бюджетного учреждения здравоохранения Самарской области \" Тольятти нская городская клиническая больница № 5\"",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326016807",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/036-0142200001326016807/discovery-output.json"
+  },
+  {
+    "id": "0142200001326016805",
+    "title": "Поставка реагентов для клинико-диагностической лаборатории для Государственного бюджетного учреждения здравоохранения Самарской области \" Тольятти нская городская клиническая поликлиника № 3\"",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326016805",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/037-0142200001326016805/discovery-output.json"
+  },
+  {
+    "id": "0142200001326016804",
+    "title": "Поставка медицинских расходных материалов для Государственного бюджетного учреждения здравоохранения Самарской области « Тольятти нская городская клиническая поликлиника № 3»",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326016804",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/038-0142200001326016804/discovery-output.json"
+  },
+  {
+    "id": "0142200001326016803",
+    "title": "Поставка медицинских инструментов для Государственного бюджетного учреждения здравоохранения Самарской области \" Тольятти нская городская клиническая поликлиника № 3\"",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326016803",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/039-0142200001326016803/discovery-output.json"
+  },
+  {
+    "id": "0342200042026000034",
+    "title": "Мягкий инвентарь (обувь одежда постельное)",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0342200042026000034",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/040-0342200042026000034/discovery-output.json"
+  },
+  {
+    "id": "0142200001326016799",
+    "title": "Поставка медицинских изделий для государственного бюджетного учреждения здравоохранения Самарской области « Тольятти нская городская клиническая больница №2 имени В.В. Баныкина»",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326016799",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/041-0142200001326016799/discovery-output.json"
+  },
+  {
+    "id": "0142200001326016768",
+    "title": "Поставка костного цемента на 2026-2027 гг.",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326016768",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/042-0142200001326016768/discovery-output.json"
+  },
+  {
+    "id": "32616350852",
+    "title": "Поставка запасных частей для тормозных механизмов автобусов",
+    "url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616350852",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/043-32616350852/discovery-output.json"
+  },
+  {
+    "id": "0342300183126000003",
+    "title": "Замена радиаторов отопления",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0342300183126000003",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "CANDIDATE",
+    "positive": true,
+    "raw_output": "work/044-0342300183126000003/discovery-output.json"
+  },
+  {
+    "id": "0348100015526000526",
+    "title": "Поставка медицинского изделия (очиститель воздуха фильтрующий высокоэффективный, стационарный)",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0348100015526000526",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/045-0348100015526000526/discovery-output.json"
+  },
+  {
+    "id": "0842300004026000038",
+    "title": "Поставка дисков автомобильных",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0842300004026000038",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/046-0842300004026000038/discovery-output.json"
+  },
+  {
+    "id": "0842300004026000042",
+    "title": "Поставка конвертов почтовых бумажных",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0842300004026000042",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/047-0842300004026000042/discovery-output.json"
+  },
+  {
+    "id": "32616350815",
+    "title": "«Ремонт оборудования ХВО с восстановлением АКЗ» для нужд производственного предприятия « Тольятти нская ТЭЦ» филиала «Самарский» (4588727)",
+    "url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616350815",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/048-32616350815/discovery-output.json"
+  },
+  {
+    "id": "0342300212926000133",
+    "title": "Поставка хозяйственных товаров для обеспечения нужд Государственного бюджетного учреждения здравоохранения Самарской области \" Тольятти нская городская клиническая больница №1 им. В.А. Гройсмана\"",
+    "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0342300212926000133",
+    "human_label": "SKIP",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/049-0342300212926000133/discovery-output.json"
+  }
+]

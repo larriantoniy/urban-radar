@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +24,12 @@ type ZakupkiSearchHTMLSource struct {
 	Client *http.Client
 }
 
+type SearchFetchResult struct {
+	Raw         []RawProcurement `json:"raw"`
+	PagesRead   int              `json:"pages_read"`
+	EntriesSeen int              `json:"entries_seen"`
+}
+
 func NewZakupkiSearchHTMLSource(client *http.Client) ZakupkiSearchHTMLSource {
 	if client == nil {
 		client = &http.Client{Timeout: 20 * time.Second}
@@ -30,11 +38,85 @@ func NewZakupkiSearchHTMLSource(client *http.Client) ZakupkiSearchHTMLSource {
 }
 
 func (s ZakupkiSearchHTMLSource) Fetch(ctx context.Context, q Query) ([]RawProcurement, error) {
-	body, err := s.FetchPage(ctx)
+	result, err := s.FetchWithOptions(ctx, SearchOptions{Limit: q.Limit})
 	if err != nil {
 		return nil, err
 	}
-	return s.ParsePage(body, q)
+	return result.Raw, nil
+}
+
+// FetchWithOptions reads bounded EIS pages while preserving every configured
+// search parameter and changing only pageNumber between requests.
+func (s ZakupkiSearchHTMLSource) FetchWithOptions(ctx context.Context, opts SearchOptions) (SearchFetchResult, error) {
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	maxPages := opts.MaxPages
+	if maxPages <= 0 {
+		maxPages = 100
+	}
+	if maxPages > 100 {
+		maxPages = 100
+	}
+	base, err := url.Parse(s.URL)
+	if err != nil {
+		return SearchFetchResult{}, fmt.Errorf("zakupki search URL: %w", err)
+	}
+	if base == nil || base.Host == "" {
+		return SearchFetchResult{}, fmt.Errorf("zakupki search URL must be absolute")
+	}
+	values := base.Query()
+	if !opts.PublishDateFrom.IsZero() {
+		values.Set("publishDateFrom", eisDate(opts.PublishDateFrom))
+	}
+	if !opts.PublishDateTo.IsZero() {
+		values.Set("publishDateTo", eisDate(opts.PublishDateTo))
+	}
+	values.Set("recordsPerPage", "_10")
+	page := 1
+	seen := map[string]bool{}
+	all := make([]SearchHTMLEntry, 0, limit)
+	pagesRead := 0
+	for pagesRead < maxPages && len(all) < limit {
+		values.Set("pageNumber", fmt.Sprintf("%d", page))
+		pageURL := *base
+		pageURL.RawQuery = values.Encode()
+		body, err := s.fetchPageURL(ctx, pageURL.String())
+		if err != nil {
+			return SearchFetchResult{}, err
+		}
+		entries, err := ParseSearchHTML(body, &pageURL)
+		if err != nil {
+			return SearchFetchResult{}, err
+		}
+		pagesRead++
+		for _, entry := range entries {
+			if entry.ID != "" && !seen[entry.ID] {
+				seen[entry.ID] = true
+				all = append(all, entry)
+				if len(all) >= limit {
+					break
+				}
+			}
+		}
+		next := nextSearchPage(body, page)
+		if next <= page || len(entries) == 0 {
+			break
+		}
+		page = next
+	}
+	sort.SliceStable(all, func(i, j int) bool {
+		di, dj := parseSearchDate(all[i].PublishedAt), parseSearchDate(all[j].PublishedAt)
+		if !di.Equal(dj) {
+			return di.After(dj)
+		}
+		return all[i].ID < all[j].ID
+	})
+	return SearchFetchResult{Raw: searchEntriesToRaw(all, limit), PagesRead: pagesRead, EntriesSeen: len(all)}, nil
 }
 
 func (s ZakupkiSearchHTMLSource) ParsePage(body []byte, q Query) ([]RawProcurement, error) {
@@ -57,7 +139,11 @@ func (s ZakupkiSearchHTMLSource) FetchPage(ctx context.Context) ([]byte, error) 
 	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, fmt.Errorf("zakupki search URL must be an absolute http(s) URL")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	return s.fetchPageURL(ctx, u.String())
+}
+
+func (s ZakupkiSearchHTMLSource) fetchPageURL(ctx context.Context, rawURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -80,6 +166,41 @@ func (s ZakupkiSearchHTMLSource) FetchPage(ctx context.Context) ([]byte, error) 
 		return nil, err
 	}
 	return body, nil
+}
+
+func eisDate(t time.Time) string {
+	return t.In(time.FixedZone("Europe/Samara", 4*60*60)).Format("02.01.2006")
+}
+
+func parseSearchDate(value string) time.Time {
+	value = strings.TrimSpace(value)
+	for _, layout := range []string{"2006-01-02", "02.01.2006", "02.01.2006 15:04", "2006-01-02 15:04"} {
+		if t, err := time.ParseInLocation(layout, value, time.FixedZone("Europe/Samara", 4*60*60)); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
+func nextSearchPage(data []byte, current int) int {
+	doc, err := html.Parse(bytes.NewReader(data))
+	if err != nil {
+		return 0
+	}
+	next := 0
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "a" && classHas(n, "paginator-button-next") {
+			if v, e := strconv.Atoi(attr(n, "data-pagenumber")); e == nil && v > current {
+				next = v
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+	return next
 }
 
 func mustParseURL(value string) *url.URL { u, _ := url.Parse(value); return u }

@@ -1,0 +1,66 @@
+{
+  "runtime_errors": [],
+  "false_positives": [
+    {
+      "id": "32616328759",
+      "title": "Выполнение строительно-монтажных работ на объекте: «Газопровод высокого давления 2 категории Самарская обл., г.о. Тольятти , г. Тольятти , ш.Обводное, от газопровода к с.Васильевка до границ участка д.123, стр.1 по ш.Обводное».",
+      "url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616328759",
+      "human_label": "SKIP",
+      "status": "SUCCESS",
+      "discovery_result": "CANDIDATE",
+      "positive": true,
+      "raw_output": "work/004-32616328759/discovery-output.json"
+    },
+    {
+      "id": "32616328717",
+      "title": "Выполнение строительно-монтажных работ на объекте: «Технологическое присоединение к сети газораспределения -склада, расположенного: Самарская область, г. Тольятти , Обводное ш., влд.70, стр.3. Газопровод среднего давления от существующего d=100 мм, проложенного к ШГРП №402 до границы з.у.»",
+      "url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616328717",
+      "human_label": "SKIP",
+      "status": "SUCCESS",
+      "discovery_result": "CANDIDATE",
+      "positive": true,
+      "raw_output": "work/005-32616328717/discovery-output.json"
+    },
+    {
+      "id": "32616329341",
+      "title": "Выполнение инженерно-геологических изысканий по объектам:Лот №1: «Реконструкция оборудования ПС 110 кВ «ГПП-5000000»г. Тольятти Самарская область;Лот №2: Реконструкция КЛ-10 кВ Ф-Ш-2 от №217/47 до опоры №217/48 (2х0,120 км) Шенталинский район Самарская область",
+      "url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616329341",
+      "human_label": "SKIP",
+      "status": "SUCCESS",
+      "discovery_result": "CANDIDATE",
+      "positive": true,
+      "raw_output": "work/021-32616329341/discovery-output.json"
+    },
+    {
+      "id": "0342300036026000222",
+      "title": "Оказание услуг по ремонту медицинского оборудования для государственного бюджетного учреждения здравоохранения Самарской области « Тольятти нская городская клиническая больница №2 имени В.В.Баныкина»",
+      "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0342300036026000222",
+      "human_label": "SKIP",
+      "status": "SUCCESS",
+      "discovery_result": "CANDIDATE",
+      "positive": true,
+      "raw_output": "work/023-0342300036026000222/discovery-output.json"
+    },
+    {
+      "id": "0142200001326016812",
+      "title": "Поставка медицинских изделий для центра амбулаторной кардиологии для нужд Государственного бюджетного учреждения здравоохранения Самарской области « Тольятти нская городская клиническая поликлиника №3»",
+      "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326016812",
+      "human_label": "SKIP",
+      "status": "SUCCESS",
+      "discovery_result": "CANDIDATE",
+      "positive": true,
+      "raw_output": "work/035-0142200001326016812/discovery-output.json"
+    },
+    {
+      "id": "0342300183126000003",
+      "title": "Замена радиаторов отопления",
+      "url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0342300183126000003",
+      "human_label": "SKIP",
+      "status": "SUCCESS",
+      "discovery_result": "CANDIDATE",
+      "positive": true,
+      "raw_output": "work/044-0342300183126000003/discovery-output.json"
+    }
+  ],
+  "false_negatives": []
+}

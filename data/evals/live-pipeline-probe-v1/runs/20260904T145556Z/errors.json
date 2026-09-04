@@ -1,0 +1,32 @@
+{
+  "errors": [
+    {
+      "stage": "discovery",
+      "source_item_id": "32616350815",
+      "error_type": "schema_error",
+      "error_message": "invalid candidates output",
+      "raw_output": "This input item is a routine equipment-maintenance procurement (repair of water-treatment equipment at the Tolyatti CHP plant, ~12.7M RUB). It describes scheduled upkeep, not a construction, opening, or infrastructure change that meaningfully alters the city. It's noise for a city-change monitor, so no candidate is emitted.\n\n{\n  \"scanned_items\": 1,\n  \"opened_items\": 0,\n  \"candidates\": []\n}\n"
+    },
+    {
+      "stage": "discovery",
+      "source_item_id": "0142200001326016983",
+      "error_type": "schema_error",
+      "error_message": "invalid candidates output",
+      "raw_output": "I'll process the provided input. This item is a routine drug-supply procurement auction for the Togliatti TB dispensary — a standard recurring purchase of medications (ЖНВЛП лот 6), not a concrete change to the city (no construction, infrastructure, facility opening, or planning decision). The full text is already available and confirms it is pure procurement, so there is no reason to open anything further.\n\n{\"scanned_items\": 1, \"opened_items\": 0, \"candidates\": []}\n"
+    },
+    {
+      "stage": "discovery",
+      "source_item_id": "0342200042026000035",
+      "error_type": "schema_error",
+      "error_message": "invalid candidates output",
+      "raw_output": "{\n  \"scanned_items\": 1,\n  \"opened_items\": 0,\n  \"candidates\": [\n    {\n      \"title\": \"Мягкий инвентарь (обувь одежда постельное) для ГКУ «Созвездие» г.о. Тольятти\",\n      \"published_at\": \"2026-08-28\",\n      \"source_url\": \"https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0342200042026000035\",\n      \"event_type_guess\": \"Procurement / routine supply purchase\",\n      \"summary\": \"Запрос котировок на закупку мягкого инвентаря (обувь, одежда, постельное бельё) на сумму 66 800 руб. для ГКУ Самарской области «Центр помощи детям, оставшимся без попечения родителей \"Созвездие\" (коррекционный)». Определение поставщика завершено.\",\n      \"why_potentially_relevant\": \"Касается бюджетных закупок государственного учреждения для детей в Тольятти, что связано с жизнеобеспечением социального объекта. Передано редактору с учётом принципа recall — может оказаться несущественной рядовой закупкой расходных материалов.\",\n      \"uncertainty\": \"HIGH\"\n    }\n  ]\n}\n"
+    },
+    {
+      "stage": "discovery",
+      "source_item_id": "0342300212926000133",
+      "error_type": "schema_error",
+      "error_message": "invalid candidates output",
+      "raw_output": "{\"scanned_items\": 20, \"opened_items\": 5, \"candidates\": [{\"title\": \"Возможности предприятий ГК «Озон Фармацевтика» оценили медики и представители власти\", \"published_at\": \"2026-09-04\", \"source_url\": \"https://tgl.ru/news/item/25868-vozmozhnosti-predpriyatiy-gk-ozon-farmacevtika-ocenili-mediki-i-predstaviteli-vlasti/\", \"event_type_guess\": \"production/enterprise\", \"summary\": \"Выездное совещание в ОЭЗ Тольятти: осмотрены завод «Мабскейл» (онкопрепараты) и новый завод «Озон Медика». Строительство «Озон Медика» стартовало в 2023 году, здание оснащено оборудованием и практически готово к запуску — лицензия получена в конце августа, коммерческий запуск запланирован на 2027 год, мощность до 1,5 млн упаковок в год.\", \"why_potentially_relevant\": \"Почти завершённое строительство нового специализированного фармацевтического завода в ОЭЗ Тольятти — значимое промышленное/производственное изменение города.\", \"uncertainty\": \"MEDIUM\"}, {\"title\": \"Заброшенное здание на Дзержинского может обрести вторую жign\", \"published_at\": \"2026-09-03\", \"source_url\": \"https://tgl.ru/news/item/265864-zabroshennoe-zdanie-na-Dzerzhinskogo-mozhet-obresti-vtoruyu-zhizn/\", \"event_type_guess\": \"reconstruction/urban-planning\", \"summary\": \"Заброшенное здание по ул. Дзержинского, 33 (на балансе облМинздрава, более 20 лет не использовалось) осмотрено в рамках выездного совещания. Обсуждается его восстановление, в том числе под центр реабилитации участников СВО.\", \"why_potentially_relevant\": \"Начата проработка восстановления/перепрофилирования долго пустовавшего здания — потенциальная реконструкция с социальным назначением.\", \"uncertainty\": \"HIGH\"}, {\"title\": \"Тольяттинские дворы преображаются по программе «Народный бюджет Самарской области»\", \"published_at\": \"2026-09-03\", \"source_url\": \"https://tgl.ru/news/item/25865-tolyattinskie-dvory-preobrazhayutsya-po-programme-narodnyy-byudzhet-samarskoy-oblasti/\", \"event_type_guess\": \"public-improvement\", \"summary\": \"В рамках программы «Народный бюджет» в этом году реализуется более двух десятков инициативных проектов благоустройства, многие завершены. Завершены игровая и спортивная площадка во дворе ул. 70 лет Октября, 5 (17 квартал) и восстановление полимерного покрытия на спортивной площадке по ул. Матросова, 16.\", \"why_potentially_relevant\": \"Завершение реальных работ по благоустройству дворов и спортивных площадок за счёт бюджетной программы — публичные улучшения в городе.\", \"uncertainty\": \"LOW\"}\n]}\n~\n"
+    }
+  ]
+}

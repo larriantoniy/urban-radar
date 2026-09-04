@@ -6,6 +6,11 @@
 !/data/evals/zakupki-discovery-v0/runs/.gitkeep
 /data/evals/zakupki-editor-v0/runs/*
 !/data/evals/zakupki-editor-v0/runs/.gitkeep
+/data/evals/research-zakupki-v0/runs/*
+!/data/evals/research-zakupki-v0/runs/.gitkeep
+/data/evals/**/runs/**/work/
+/data/evals/**/runs/**/raw/
+*.usage.json
 __pycache__/
 *.log
 *.pid

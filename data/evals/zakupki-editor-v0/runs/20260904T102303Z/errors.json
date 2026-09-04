@@ -1,0 +1,11 @@
+{
+  "runtime_errors": [
+    {
+      "registry_id": "0342300183126000003",
+      "source_url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0342300183126000003",
+      "error_type": "invalid_editor_output",
+      "error_message": "missing decision for source_url",
+      "raw_output": "{\n  \"decisions\": [\n    {\n      \"source_url\": \"https://zakupki.gov.ru/epz/order/notice/printForm/list.html?regNumber=0342303186000003\",\n      \"decision\": \"IGNORE\",\n      \"importance\": 0.1,\n      \"reason\": \"Рутинное техническое обслуживание (замена радиаторов отопления) в одном здании спортивной школы. Не является существенным изменением городской среды — это рядовая закупка на небольшую сумму (264 тыс. руб.), не влияющая на облик или функциональность города для широкой аудитории.\",\n      \"missing_information\": []\n    }\n  ]\n}\n"
+    }
+  ]
+}

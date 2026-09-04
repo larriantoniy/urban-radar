@@ -1,0 +1,17 @@
+{
+  "retrieved_at": "2026-09-04T14:55:57Z",
+  "window_start": "2026-08-28",
+  "window_end": "2026-09-04",
+  "source_limit": 50,
+  "pages_read": 5,
+  "raw_count": 50,
+  "unique_count": 50,
+  "normalized_count": 50,
+  "enrichment_success": 50,
+  "enrichment_failures": 0,
+  "normalization_errors": 0,
+  "selected_count": 50,
+  "oldest_published_at": "2026-08-28",
+  "newest_published_at": "2026-09-04",
+  "universe_semantics": "bounded deterministic snapshot, max 50 records"
+}

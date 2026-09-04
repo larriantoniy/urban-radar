@@ -1,0 +1,110 @@
+[
+  {
+    "registry_id": "32616328759",
+    "source_url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616328759",
+    "title": "Выполнение строительно-монтажных работ на объекте: «Газопровод высокого давления 2 категории Самарская обл., г.о. Тольятти , г. Тольятти , ш.Обводное, от газопровода к с.Васильевка до границ участка д.123, стр.1 по ш.Обводное».",
+    "human_label": "SKIP",
+    "discovery_output": "work/004-32616328759/discovery-output.json",
+    "status": "SUCCESS",
+    "decision": "RESEARCH",
+    "importance": 0.4,
+    "reason": "Потенциально значимое изменение инженерной инфраструктуры (газопровод высокого давления 2 категории) в Тольятти, однако из имеющихся данных нельзя оценить его реальную значимость: неизвестны протяжённость, назначение (какие объекты/районы подключаются), источник финансирования, сроки и связь с уже известными проектами. Сумма в 629 520 руб. позволяет предположить небольшой локальный участок, но этого недостаточно для PUBLISH или обоснованного IGNORE.",
+    "editor_output": "work/001-32616328759/editor-output.json"
+  },
+  {
+    "registry_id": "32616328717",
+    "source_url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616328717",
+    "title": "Выполнение строительно-монтажных работ на объекте: «Технологическое присоединение к сети газораспределения -склада, расположенного: Самарская область, г. Тольятти , Обводное ш., влд.70, стр.3. Газопровод среднего давления от существующего d=100 мм, проложенного к ШГРП №402 до границы з.у.»",
+    "human_label": "SKIP",
+    "discovery_output": "work/005-32616328717/discovery-output.json",
+    "status": "SUCCESS",
+    "decision": "IGNORE",
+    "importance": 0.05,
+    "reason": "Routine utility connection for a single commercial warehouse. Technological gas connection of one object to the existing distribution network is standard service activity, not a meaningful city change — no new infrastructure being built for the public, just a hookup for a private facility. Also only at procurement-commission stage, so even the contract milestone is not yet established.",
+    "editor_output": "work/002-32616328717/editor-output.json"
+  },
+  {
+    "registry_id": "32616305082",
+    "source_url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616305082",
+    "title": "Выполнение работ в рамках капитального ремонта на территории, примыкающей к объекту капитального ремонта - зданию ГАПОУ СО «ТМК», расположенному по адресу: 445032, Самарская область, г. Тольятти , Южное шоссе, 119, в том числе: - проведение работ по благоустройству территории, примыкающей к объекту капитального ремонта; - проведение работ по обеспечению условий для обучающихся с инвалидностью и ограниченными возможностями здоровья",
+    "human_label": "CANDIDATE",
+    "discovery_output": "work/006-32616305082/discovery-output.json",
+    "status": "SUCCESS",
+    "decision": "PUBLISH",
+    "importance": 0.55,
+    "reason": "Официально объявлена закупка на благоустройство территории, примыкающей к зданию Тольяттинского машиностроительного колледжа (Южное шоссе, 119), включая создание доступной среды для обучающихся с инвалидностью и ОВЗ. Это конкретное планируемое физическое изменение общественного образовательного объекта — новый значимый факт на стадии старта (объявлен аукцион), а не завершение. Подаётся как планируемый этап, без представления как выполненного.",
+    "editor_output": "work/003-32616305082/editor-output.json"
+  },
+  {
+    "registry_id": "0142200001326016814",
+    "source_url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326016814",
+    "title": "Выполнение работ по устройству инженерных сетей по объекту \"Благоустройство (электроснабжение и наружное освещение) территории общего пользования (пляж) по адресу: г. Тольятти , Комсомольское шоссе, 34а\" (Самарская область, г. Тольятти , Комсомольское шоссе, уч. с к.н. 63:09:0305025:575, 63:09:0305025:576)\"",
+    "human_label": "CANDIDATE",
+    "discovery_output": "work/008-0142200001326016814/discovery-output.json",
+    "status": "SUCCESS",
+    "decision": "PUBLISH",
+    "importance": 0.55,
+    "reason": "Официальная муниципальная закупка на устройство инженерных сетей (электроснабжение и наружное освещение) для благоустройства общественного пляжа на Комсомольском шоссе, 34а. Это конкретный физический проект улучшения общественного пространства с бюджетом свыше 8 млн руб., что является значимым городским изменением. Формулировка отражает только текущий этап — закупка (работа комиссии), без утверждения о завершении работ.",
+    "editor_output": "work/004-0142200001326016814/editor-output.json"
+  },
+  {
+    "registry_id": "0142200001326017137",
+    "source_url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326017137",
+    "title": "Благоустройство объектов (объекта). Ремонт и установка МАФ.",
+    "human_label": "CANDIDATE",
+    "discovery_output": "work/017-0142200001326017137/discovery-output.json",
+    "status": "SUCCESS",
+    "decision": "RESEARCH",
+    "importance": 0.5,
+    "reason": "A confirmed municipal tender (~4.8M RUB) for repair and installation of small architectural forms is a concrete starting-stage public-space change, not routine maintenance or ceremony. However, the notice is generic: it does not specify which objects, streets, or neighbourhoods are affected, nor whether this is new installation or repair of existing furniture. Without that detail the significance to the community cannot be judged, so the item needs verification before publishing.",
+    "editor_output": "work/005-0142200001326017137/editor-output.json"
+  },
+  {
+    "registry_id": "32616329341",
+    "source_url": "https://zakupki.gov.ru/223/purchase/public/purchase/info/common-info.html?regNumber=32616329341",
+    "title": "Выполнение инженерно-геологических изысканий по объектам:Лот №1: «Реконструкция оборудования ПС 110 кВ «ГПП-5000000»г. Тольятти Самарская область;Лот №2: Реконструкция КЛ-10 кВ Ф-Ш-2 от №217/47 до опоры №217/48 (2х0,120 км) Шенталинский район Самарская область",
+    "human_label": "SKIP",
+    "discovery_output": "work/021-32616329341/discovery-output.json",
+    "status": "SUCCESS",
+    "decision": "IGNORE",
+    "importance": 0.1,
+    "reason": "This is only a tender for engineering-geological surveys — a preliminary, routine procurement step totaling ~744k RUB. It does not confirm an approved project, contract, construction start, or completion. The actual reconstruction of the 110 kV substation is not yet a committed stage, and part of the scope (10 kV cable line) lies outside Tolyatti. A procurement notice of this kind is informational and too preliminary to be a meaningful city change.",
+    "editor_output": "work/006-32616329341/editor-output.json"
+  },
+  {
+    "registry_id": "0342300036026000222",
+    "source_url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0342300036026000222",
+    "title": "Оказание услуг по ремонту медицинского оборудования для государственного бюджетного учреждения здравоохранения Самарской области « Тольятти нская городская клиническая больница №2 имени В.В.Баныкина»",
+    "human_label": "SKIP",
+    "discovery_output": "work/023-0342300036026000222/discovery-output.json",
+    "status": "SUCCESS",
+    "decision": "IGNORE",
+    "importance": 0.1,
+    "reason": "Routine procurement for repair services of existing medical equipment (560,000 RUB, supplier determination completed) for a known city hospital. This is standard operational maintenance, not a new object, service, or any publicly significant change to the facility. It does not meet the threshold of a meaningful city change under the policy, which excludes routine activities merely because they are local.",
+    "editor_output": "work/007-0342300036026000222/editor-output.json"
+  },
+  {
+    "registry_id": "0142200001326016812",
+    "source_url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326016812",
+    "title": "Поставка медицинских изделий для центра амбулаторной кардиологии для нужд Государственного бюджетного учреждения здравоохранения Самарской области « Тольятти нская городская клиническая поликлиника №3»",
+    "human_label": "SKIP",
+    "discovery_output": "work/035-0142200001326016812/discovery-output.json",
+    "status": "SUCCESS",
+    "decision": "PUBLISH",
+    "importance": 0.6,
+    "reason": "Закупка на поставку изделий для центра амбулаторной кардиологии в поликлинике №3 сигнализирует о создании/оснащении новой профильной медицинской структуры в городском здравоохранении Тольятти. Это значимый этап (начало оснащения) нового объекта здравоохранения. Информация должна подаваться как факт закупки/начала оснащения, а не как открытие центра.",
+    "editor_output": "work/008-0142200001326016812/editor-output.json"
+  },
+  {
+    "registry_id": "0342300183126000003",
+    "source_url": "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0342300183126000003",
+    "title": "Замена радиаторов отопления",
+    "human_label": "SKIP",
+    "discovery_output": "work/044-0342300183126000003/discovery-output.json",
+    "status": "ERROR",
+    "decision": null,
+    "importance": null,
+    "reason": "",
+    "editor_output": "work/009-0342300183126000003/editor-output.json"
+  }
+]

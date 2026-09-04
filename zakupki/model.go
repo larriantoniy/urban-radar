@@ -20,6 +20,15 @@ type Query struct {
 	Since time.Time
 }
 
+// SearchOptions controls bounded EIS HTML retrieval. Dates are rendered in
+// the EIS form's DD.MM.YYYY format using the Europe/Samara calendar date.
+type SearchOptions struct {
+	Limit           int
+	PublishDateFrom time.Time
+	PublishDateTo   time.Time
+	MaxPages        int
+}
+
 // RawProcurement is the adapter boundary. Payload may contain the original
 // XML/JSON document for audit, but business logic only consumes normalized
 // fields after ParseRaw.

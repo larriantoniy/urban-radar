@@ -1,0 +1,38 @@
+{
+  "discovery": {
+    "api_calls": 110,
+    "input_tokens": 297730,
+    "output_tokens": 74616,
+    "estimated_cost_usd": 0.037878754,
+    "model": [
+      "deepseek/deepseek-v4-flash-0731"
+    ],
+    "provider": [
+      "openrouter"
+    ]
+  },
+  "editor": {
+    "api_calls": 5,
+    "input_tokens": 60484,
+    "output_tokens": 2452,
+    "estimated_cost_usd": 0.00447522,
+    "model": [
+      "deepseek/deepseek-v4-flash-0731"
+    ],
+    "provider": [
+      "openrouter"
+    ]
+  },
+  "total": {
+    "api_calls": 115,
+    "input_tokens": 358214,
+    "output_tokens": 77068,
+    "estimated_cost_usd": 0.042353974,
+    "model": [
+      "deepseek/deepseek-v4-flash-0731"
+    ],
+    "provider": [
+      "openrouter"
+    ]
+  }
+}

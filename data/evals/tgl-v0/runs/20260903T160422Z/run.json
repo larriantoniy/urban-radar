@@ -1,0 +1,29 @@
+{
+  "run_id": "20260903T160422Z",
+  "timestamp": "2026-09-03T16:04:22.928097Z",
+  "status": "failed",
+  "model": "deepseek/deepseek-v4-flash-0731",
+  "provider": "openrouter",
+  "discovery_prompt_hash": "494f2d28df84bb095d052863f1e722469f8f7b8dde5e44aa76d112cefa9f80d7",
+  "discovery_prompt_path": "agents/discovery/prompt.md",
+  "editor_prompt_path": "agents/editor/prompt-v1.md",
+  "editor_prompt_hash": "07bfe51fdf6fb37c0dd2d3029897691f6080983e473a42b8cd086ad43a3f0f21",
+  "dataset_hash": "279de12fa7df094e0204a0fdfb6e4c42f693446915bc8515e6535c11a1910a4b",
+  "evaluated_items": 86,
+  "runtime_errors": 6,
+  "usage": {
+    "discovery": {
+      "api_calls": 152,
+      "input_tokens": 148146,
+      "output_tokens": 31543,
+      "estimated_cost_usd": 0.022254046
+    },
+    "editor": {
+      "api_calls": 94,
+      "input_tokens": 73758,
+      "output_tokens": 18402,
+      "estimated_cost_usd": 0.008599142
+    },
+    "total_estimated_cost_usd": 0.030853188
+  }
+}

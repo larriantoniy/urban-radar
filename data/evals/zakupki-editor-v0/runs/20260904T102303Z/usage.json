@@ -1,0 +1,8 @@
+{
+  "api_calls": 9,
+  "input_tokens": 10711,
+  "output_tokens": 5987,
+  "estimated_cost_usd": 0.001794355,
+  "model": "deepseek/deepseek-v4-flash-0731",
+  "provider": "openrouter"
+}

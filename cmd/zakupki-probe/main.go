@@ -21,6 +21,7 @@ func main() {
 	export := flag.String("export", "", "write normalized live items to this JSON path")
 	saveRaw := flag.String("save-raw", "", "save exact HTML search response before parsing")
 	saveCard := flag.String("save-card", "", "save exact first fetched detail HTML response")
+	days := flag.Int("days", 7, "HTML search publication window in calendar days")
 	flag.Parse()
 	if err := validateLimit(*limit); err != nil {
 		fail(err.Error())
@@ -45,7 +46,17 @@ func main() {
 				raw, err = src.ParsePage(body, zakupki.Query{Limit: *limit})
 			}
 		} else {
-			raw, err = src.Fetch(context.Background(), zakupki.Query{Limit: *limit})
+			if *days < 0 {
+				fail("days must be non-negative")
+			}
+			now := time.Now().UTC()
+			windowStart := now.AddDate(0, 0, -*days)
+			result, fetchErr := src.FetchWithOptions(context.Background(), zakupki.SearchOptions{Limit: *limit, PublishDateFrom: windowStart, PublishDateTo: now})
+			err = fetchErr
+			if err == nil {
+				raw = result.Raw
+				fmt.Printf("retrieved_at: %s\nwindow_start: %s\nwindow_end: %s\npages read: %d\n", now.Format(time.RFC3339), windowStart.Format("2006-01-02"), now.Format("2006-01-02"), result.PagesRead)
+			}
 		}
 	} else if *sourceName == "eis" {
 		raw, err = zakupki.NewEISClient(httpClient).Fetch(context.Background(), zakupki.Query{Limit: *limit})

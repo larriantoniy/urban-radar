@@ -1,0 +1,25 @@
+{
+  "run_id": "20260904T143034Z",
+  "timestamp": "2026-09-04T14:32:08.122656Z",
+  "status": "success",
+  "universe_path": "universe.json",
+  "discovery_prompt_path": "agents/discovery/prompt.md",
+  "discovery_prompt_hash": "494f2d28df84bb095d052863f1e722469f8f7b8dde5e44aa76d112cefa9f80d7",
+  "editor_prompt_path": "agents/editor/prompt-v1.md",
+  "editor_prompt_hash": "07bfe51fdf6fb37c0dd2d3029897691f6080983e473a42b8cd086ad43a3f0f21",
+  "raw": 10,
+  "normalized": 10,
+  "errors": 0,
+  "usage": {
+    "api_calls": 10,
+    "input_tokens": 24167,
+    "output_tokens": 3605,
+    "estimated_cost_usd": 0.002420459,
+    "model": [
+      "deepseek/deepseek-v4-flash-0731"
+    ],
+    "provider": [
+      "openrouter"
+    ]
+  }
+}

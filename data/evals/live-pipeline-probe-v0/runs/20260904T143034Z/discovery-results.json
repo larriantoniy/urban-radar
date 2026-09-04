@@ -1,0 +1,92 @@
+[
+  {
+    "source_item_id": "0342300023126000023",
+    "source_url": "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0342300023126000023",
+    "title": "ВЫПОЛНЕНИЕ РАБОТ ПО КОНТРОЛЮ ЭКСПЛУАТАЦИОННЫХ ПАРАМЕТРОВ РЕНТГЕНОВСКИХ АППАРАТОВ ДЛЯ НУЖД ГБУЗ СО \"ТСП №3\"",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/001-0342300023126000023/discovery-output.json"
+  },
+  {
+    "source_item_id": "0142200001326017185",
+    "source_url": "https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=0142200001326017185",
+    "title": "Выполнение работ по техническому обслуживанию и ремонту медицинского оборудования Государственного бюджетного учреждения здравоохранения Самарской области \" Тольятти нская городская клиническая больница № 5\"",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/002-0142200001326017185/discovery-output.json"
+  },
+  {
+    "source_item_id": "0142200001326017184",
+    "source_url": "https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=0142200001326017184",
+    "title": "Поставка перевязочных средств 3-4 кв. 2026 г. и 2027 г.",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/003-0142200001326017184/discovery-output.json"
+  },
+  {
+    "source_item_id": "0142200001326017183",
+    "source_url": "https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=0142200001326017183",
+    "title": "Поставка лекарственного средства МНН Цефоперазон+Сульбактам для Государственного бюджетного учреждения здравоохранения Самарской области \" Тольятти нская городская клиническая больница № 5\"",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/004-0142200001326017183/discovery-output.json"
+  },
+  {
+    "source_item_id": "0373100042426000467",
+    "source_url": "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0373100042426000467",
+    "title": "Оказание услуг в рамках организации и проведения первенства России по парусному спорту среди юниоров и юниорок до 24 лет, до 23 лет, до 21 лет, юношей и девушек до 19 лет, до 17 лет",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/005-0373100042426000467/discovery-output.json"
+  },
+  {
+    "source_item_id": "0142200001326016068",
+    "source_url": "https://zakupki.gov.ru/epz/order/notice/ok20/view/common-info.html?regNumber=0142200001326016068",
+    "title": "Оказание услуг по приготовлению питания по вариативному меню для граждан, находящихся на социальном обслуживании в государственном бюджетном учреждении Самарской области « Тольятти нский дом-интернат для престарелых, инвалидов»",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/006-0142200001326016068/discovery-output.json"
+  },
+  {
+    "source_item_id": "0142200001326016788",
+    "source_url": "https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=0142200001326016788",
+    "title": "Поставка предметов хозяйственно-бытового назначения в учреждения Самарской области (совместные торги)",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/007-0142200001326016788/discovery-output.json"
+  },
+  {
+    "source_item_id": "0142200001326017180",
+    "source_url": "https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=0142200001326017180",
+    "title": "Поставка лекарственного средства МНН Инсулин глулизин для Государственного бюджетного учреждения здравоохранения Самарской области \" Тольятти нская городская клиническая больница № 5\"",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/008-0142200001326017180/discovery-output.json"
+  },
+  {
+    "source_item_id": "0142200001326016737",
+    "source_url": "https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=0142200001326016737",
+    "title": "Поставка медицинских изделий для государственного бюджетного учреждения здравоохранения Самарской области « Тольятти нская городская клиническая больница №2 имени В.В. Баныкина»",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/009-0142200001326016737/discovery-output.json"
+  },
+  {
+    "source_item_id": "0342100014826000003",
+    "source_url": "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0342100014826000003",
+    "title": "Услуги организации проживания и питания детей и сопровождающих в рамках проведения образовательно-туристских программ \"Университетские смены\"",
+    "status": "SUCCESS",
+    "discovery_result": "DROP",
+    "positive": false,
+    "raw_output": "work/010-0342100014826000003/discovery-output.json"
+  }
+]

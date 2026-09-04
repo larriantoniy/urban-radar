@@ -2,11 +2,70 @@ package zakupki
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func TestValidateProcurementRef(t *testing.T) {
+	valid := ProcurementRef{RegistryID: "0142200001326017137", SourceURL: "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017137"}
+	if err := validateProcurementRef(valid); err != nil {
+		t.Fatalf("valid reference rejected: %v", err)
+	}
+	for name, ref := range map[string]ProcurementRef{
+		"mismatch":        {RegistryID: valid.RegistryID, SourceURL: "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017138"},
+		"foreign host":    {RegistryID: valid.RegistryID, SourceURL: "https://evil.example/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017137"},
+		"http":            {RegistryID: valid.RegistryID, SourceURL: "http://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017137"},
+		"signature modal": {RegistryID: valid.RegistryID, SourceURL: "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?regNumber=0142200001326017137"},
+		"arbitrary path":  {RegistryID: valid.RegistryID, SourceURL: "https://zakupki.gov.ru/epz/order/notice/zk20/view/documents.html?regNumber=0142200001326017137"},
+		"custom port":     {RegistryID: valid.RegistryID, SourceURL: "https://zakupki.gov.ru:443/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017137"},
+		"userinfo":        {RegistryID: valid.RegistryID, SourceURL: "https://user@zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017137"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateProcurementRef(ref); err == nil {
+				t.Fatal("expected reference rejection")
+			}
+		})
+	}
+}
+
+type refRoundTripper struct{ searchCalls int }
+
+func (r *refRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if strings.Contains(req.URL.Path, "extendedsearch") {
+		r.searchCalls++
+	}
+	body := `<html><head><meta property="og:title" content="Благоустройство"/></head><body><div class="registry-entry__body-value">Благоустройство</div><a href="/epz/order/notice/zk20/view/documents.html?regNumber=0142200001326017137">Документы</a></body></html>`
+	if strings.Contains(req.URL.Path, "documents.html") {
+		body = `<html><a href="/files/spec.pdf">Техническое задание</a><div class="attachment"><a href="/44fz/filestore/public/1.0/download/priz/file.html?uid=att-1" title="Техническое задание.docx">Техническое задание</a></div></html>`
+	}
+	return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
+}
+
+func TestSourceURLSkipsSearchAndResolvesDocuments(t *testing.T) {
+	rt := &refRoundTripper{}
+	a := NewProcurementAccess(&http.Client{Transport: rt})
+	a.SearchURL = "https://zakupki.gov.ru/epz/order/extendedsearch/results.html"
+	ref := ProcurementRef{RegistryID: "0142200001326017137", SourceURL: "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017137"}
+	if _, err := a.GetProcurementRef(context.Background(), ref); err != nil {
+		t.Fatalf("get with source URL: %v", err)
+	}
+	docs, err := a.ListDocumentsRef(context.Background(), ref)
+	if err != nil {
+		t.Fatalf("list documents with source URL: %v", err)
+	}
+	if len(docs.Documents) != 1 {
+		t.Fatalf("documents=%+v", docs.Documents)
+	}
+	if _, err := a.ListAttachmentsRef(context.Background(), ref); err != nil {
+		t.Fatalf("list attachments with source URL: %v", err)
+	}
+	if rt.searchCalls != 0 {
+		t.Fatalf("source URL unexpectedly triggered %d search calls", rt.searchCalls)
+	}
+}
 
 func TestProcurementAccessAndDocuments(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

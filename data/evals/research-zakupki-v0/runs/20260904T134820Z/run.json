@@ -1,0 +1,31 @@
+{
+  "run_id": "20260904T134820Z",
+  "timestamp": "2026-09-04T13:50:25.615155Z",
+  "status": "success",
+  "request_path": "data/evals/research-zakupki-v0/requests/0142200001326017185.json",
+  "request_hash": "877d8a21dc718446b2f11800b0b8924d8b034cd0269919f353e888e2562ce333",
+  "research_prompt_path": "agents/research/prompt-v0.1.md",
+  "research_prompt_hash": "b55e4ca39b6df65d52e14326a8ea72b53f912d91291bc554312475a48616d809",
+  "source_item_id": "0142200001326017185",
+  "errors": 0,
+  "tool_policy": "Zakupki MCP only; no arbitrary URLs or other MCP servers",
+  "trace_path": "hermes-stderr.log",
+  "usage": {
+    "estimated_cost_usd": 0.005117521,
+    "cost_status": "estimated",
+    "cost_source": "provider_models_api",
+    "input_tokens": 43557,
+    "output_tokens": 7559,
+    "cache_read_tokens": 57856,
+    "cache_write_tokens": 0,
+    "reasoning_tokens": 3268,
+    "total_tokens": 108972,
+    "api_calls": 6,
+    "model": "deepseek/deepseek-v4-flash-0731",
+    "provider": "openrouter",
+    "session_id": "20260904_174821_07e194",
+    "completed": true,
+    "failed": false,
+    "service_tier": null
+  }
+}

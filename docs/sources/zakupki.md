@@ -91,12 +91,16 @@ go run ./cmd/zakupki-probe -source html -limit 20
 go run ./cmd/zakupki-probe -source html -limit 50 -export data/evals/zakupki-real-v0/items.json
 ```
 
-Only the first result page is requested. The adapter extracts registry numbers
-and detail links from result-card DOM, then may perform one ordinary HTTP card
-request per item for enrichment. It does not paginate, use a browser, bypass
-CAPTCHA, or alter the deterministic source filter. HTML selectors are isolated
-in `zakupki/html_search.go`; the existing business filtering remains in
-`zakupki/filter.go`.
+The HTML adapter supports bounded pagination. `-days 7` (the probe default)
+passes `publishDateFrom` and `publishDateTo` in the EIS form's
+`DD.MM.YYYY` format; `-limit` applies to the final unique raw universe and is
+capped at 100. Pages retain all configured query parameters and change only
+`pageNumber`; a 100-page safety bound prevents unbounded crawling. Results are
+deduplicated by registry ID and ordered by `published_at` descending, then
+registry ID ascending. The adapter then performs one ordinary HTTP card
+request per item for enrichment. It does not use a browser, bypass CAPTCHA, or
+alter editorial decisions. HTML selectors are isolated in
+`zakupki/html_search.go`.
 
 ### Canonical URL resolution
 
@@ -105,9 +109,13 @@ anchor in a 44-FZ result could be the electronic-signature modal
 (`printForm/listModal.html`). New parsing selects the structured
 `.registry-entry__header-mid__number a` link instead and preserves the
 notice-specific `.../view/common-info.html` URL supplied by EIS. The MCP uses
-the same resolver through `ZAKUPKI_SEARCH_URL`; it never guesses `ea20/eap20`
-or falls back to a print-form modal. Historical evaluation artifacts are not
-rewritten.
+the same resolver through `ZAKUPKI_SEARCH_URL`; when a downstream caller has a
+canonical `SourceItem.URL`, it may pass that URL together with the registry ID
+as a validated provenance reference and avoid a second search. The URL must be
+HTTPS on `zakupki.gov.ru`, use an allowed procurement-card path, contain the
+matching `regNumber`, and must not be a print/signature modal. Without a valid
+reference the existing search fallback remains available. Historical evaluation
+artifacts are not rewritten.
 
 ## On-demand evidence access (Zakupki MCP)
 
@@ -118,12 +126,16 @@ EIS → Zakupki Source → SourceItem → Discovery → Editor
 EIS → Zakupki MCP → Research Agent
 ```
 
-Run `go run ./cmd/zakupki-mcp` to expose three stdio MCP tools for a future
+Run `go run ./cmd/zakupki-mcp` to expose the stdio MCP tools for a future
 Research Agent: `get_procurement`, `list_procurement_documents`, and
-`get_procurement_document`. All inputs are registry IDs (and, for the last
-tool, a document ID returned by the listing tool); arbitrary URLs are rejected.
+`get_procurement_document`, plus trusted attachment tools
+`list_procurement_attachments` and `get_procurement_attachment`. Inputs always
+include a registry ID; an optional canonical `source_url` may be passed from a
+trusted SourceItem. Document and attachment IDs must still come from the
+corresponding listing tools; arbitrary URLs are rejected.
 The server reuses the verified HTTP client, card fetcher and card parser. It
 returns primary-source provenance and stable structured errors. Downloads are
-bounded; V0 extracts text from HTML, XML and plain text only. PDF, DOCX and
-XLSX currently return `UNSUPPORTED_DOCUMENT_TYPE`. Configure `ZAKUPKI_CA_FILE`
+bounded; V0 extracts text from HTML, XML and plain text, and trusted DOCX/XLSX
+attachments are extracted by bounded deterministic parsers. PDF currently
+returns `UNSUPPORTED_DOCUMENT_TYPE`. Configure `ZAKUPKI_CA_FILE`
 when the host requires the independently obtained official CA bundle.

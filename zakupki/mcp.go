@@ -28,11 +28,20 @@ const (
 	ErrUpstream            MCPErrorCode = "UPSTREAM_ERROR"
 	ErrParse               MCPErrorCode = "PARSE_ERROR"
 	ErrResolution          MCPErrorCode = "RESOLUTION_ERROR"
+	ErrAttachmentNotFound  MCPErrorCode = "ATTACHMENT_NOT_FOUND"
 )
 
 type MCPError struct {
 	Code    MCPErrorCode `json:"code"`
 	Message string       `json:"message"`
+}
+
+// ProcurementRef is a source-provenance reference. SourceURL is optional for
+// backwards compatibility, but when present it must be a canonical EIS card
+// URL for the same RegistryID.
+type ProcurementRef struct {
+	RegistryID string `json:"registry_id"`
+	SourceURL  string `json:"source_url,omitempty"`
 }
 
 func (e *MCPError) Error() string { return string(e.Code) + ": " + e.Message }
@@ -100,13 +109,49 @@ func validateRegistryID(id string) error {
 	return nil
 }
 
+func validateProcurementRef(ref ProcurementRef) error {
+	ref.RegistryID = strings.TrimSpace(ref.RegistryID)
+	if err := validateRegistryID(ref.RegistryID); err != nil {
+		return err
+	}
+	if strings.TrimSpace(ref.SourceURL) == "" {
+		return nil
+	}
+	u, err := url.Parse(ref.SourceURL)
+	if err != nil || u.Scheme != "https" || !strings.EqualFold(u.Hostname(), "zakupki.gov.ru") || u.Port() != "" || u.User != nil || u.Fragment != "" {
+		return &MCPError{Code: ErrResolution, Message: "source_url is not a trusted HTTPS zakupki.gov.ru URL"}
+	}
+	if u.Query().Get("regNumber") != ref.RegistryID {
+		return &MCPError{Code: ErrResolution, Message: "source_url registry ID does not match registry_id"}
+	}
+	if strings.Contains(u.Path, "/printForm/") || strings.Contains(u.Path, "listModal") || strings.Contains(u.Path, "/signview/") {
+		return &MCPError{Code: ErrResolution, Message: "source_url is a signature or print-form URL"}
+	}
+	validPath := regexp.MustCompile(`^/epz/order/notice/[^/]+/view/common-info\.html$`).MatchString(u.Path) || u.Path == "/223/purchase/public/purchase/info/common-info.html"
+	if !validPath {
+		return &MCPError{Code: ErrResolution, Message: "source_url is not a canonical procurement card path"}
+	}
+	return nil
+}
+
 // ResolveProcurement gets the canonical notice URL from a trusted EIS search
 // response. It never guesses notice types or falls back to print-form modals.
 func (a *ProcurementAccess) ResolveProcurement(ctx context.Context, id string) (string, error) {
-	id = strings.TrimSpace(id)
-	if err := validateRegistryID(id); err != nil {
+	return a.ResolveProcurementRef(ctx, ProcurementRef{RegistryID: id})
+}
+
+// ResolveProcurementRef uses validated source provenance when available and
+// falls back to the existing EIS search resolver otherwise.
+func (a *ProcurementAccess) ResolveProcurementRef(ctx context.Context, ref ProcurementRef) (string, error) {
+	ref.RegistryID = strings.TrimSpace(ref.RegistryID)
+	ref.SourceURL = strings.TrimSpace(ref.SourceURL)
+	if err := validateProcurementRef(ref); err != nil {
 		return "", err
 	}
+	if ref.SourceURL != "" {
+		return ref.SourceURL, nil
+	}
+	id := ref.RegistryID
 	if strings.TrimSpace(a.SearchURL) == "" {
 		return "", &MCPError{Code: ErrResolution, Message: "set ZAKUPKI_SEARCH_URL to resolve canonical procurement URL"}
 	}
@@ -145,7 +190,15 @@ func (a *ProcurementAccess) fetch(ctx context.Context, rawURL string, limit int6
 		return nil, "", &MCPError{Code: ErrUpstream, Message: err.Error()}
 	}
 	req.Header.Set("User-Agent", "urban-radar/0.1 (evidence reader)")
-	resp, err := a.Client.Do(req)
+	client := *a.Client
+	client.CheckRedirect = func(next *http.Request, _ []*http.Request) error {
+		nextURL := next.URL
+		if nextURL.Scheme != u.Scheme || nextURL.Host != u.Host {
+			return &MCPError{Code: ErrUpstream, Message: "redirect is outside the trusted zakupki.gov.ru host"}
+		}
+		return nil
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", &MCPError{Code: ErrUpstream, Message: err.Error()}
 	}
@@ -170,7 +223,12 @@ func (a *ProcurementAccess) fetch(ctx context.Context, rawURL string, limit int6
 }
 
 func (a *ProcurementAccess) GetProcurement(ctx context.Context, id string) (*ProcurementResult, error) {
-	u, err := a.ResolveProcurement(ctx, id)
+	return a.GetProcurementRef(ctx, ProcurementRef{RegistryID: id})
+}
+
+func (a *ProcurementAccess) GetProcurementRef(ctx context.Context, ref ProcurementRef) (*ProcurementResult, error) {
+	id := strings.TrimSpace(ref.RegistryID)
+	u, err := a.ResolveProcurementRef(ctx, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -191,13 +249,24 @@ func canonicalDocumentID(raw string) string {
 }
 
 func (a *ProcurementAccess) ListDocuments(ctx context.Context, id string) (*DocumentsResult, error) {
-	u, err := a.ResolveProcurement(ctx, id)
+	return a.ListDocumentsRef(ctx, ProcurementRef{RegistryID: id})
+}
+
+func (a *ProcurementAccess) ListDocumentsRef(ctx context.Context, ref ProcurementRef) (*DocumentsResult, error) {
+	id := strings.TrimSpace(ref.RegistryID)
+	u, err := a.ResolveProcurementRef(ctx, ref)
 	if err != nil {
 		return nil, err
 	}
 	body, _, err := a.fetch(ctx, u, 0)
 	if err != nil {
 		return nil, err
+	}
+	if documentsURL := findDocumentsURL(body, u); documentsURL != "" {
+		body, _, err = a.fetch(ctx, documentsURL, 0)
+		if err != nil {
+			return nil, err
+		}
 	}
 	docs, err := parseDocumentLinks(body, u, id)
 	if err != nil {
@@ -207,7 +276,12 @@ func (a *ProcurementAccess) ListDocuments(ctx context.Context, id string) (*Docu
 }
 
 func (a *ProcurementAccess) GetDocument(ctx context.Context, id, documentID string) (*DocumentResult, error) {
-	list, err := a.ListDocuments(ctx, id)
+	return a.GetDocumentRef(ctx, ProcurementRef{RegistryID: id}, documentID)
+}
+
+func (a *ProcurementAccess) GetDocumentRef(ctx context.Context, ref ProcurementRef, documentID string) (*DocumentResult, error) {
+	id := strings.TrimSpace(ref.RegistryID)
+	list, err := a.ListDocumentsRef(ctx, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -235,6 +309,68 @@ func (a *ProcurementAccess) GetDocument(ctx context.Context, id, documentID stri
 	doc.ContentType = ct
 	doc.Size = int64(len(body))
 	return &DocumentResult{Document: doc, Text: text, Provenance: ProcurementProvenance{RegistryID: id, SourceURL: doc.URL, SourceType: "PROCUREMENT_DOCUMENT", RetrievedAt: time.Now().UTC()}}, nil
+}
+
+func (a *ProcurementAccess) ListAttachments(ctx context.Context, id string) (*AttachmentsResult, error) {
+	return a.ListAttachmentsRef(ctx, ProcurementRef{RegistryID: id})
+}
+
+func (a *ProcurementAccess) ListAttachmentsRef(ctx context.Context, ref ProcurementRef) (*AttachmentsResult, error) {
+	id := strings.TrimSpace(ref.RegistryID)
+	u, err := a.ResolveProcurementRef(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	body, _, err := a.fetch(ctx, u, 0)
+	if err != nil {
+		return nil, err
+	}
+	if documentsURL := findDocumentsURL(body, u); documentsURL != "" {
+		body, _, err = a.fetch(ctx, documentsURL, 0)
+		if err != nil {
+			return nil, err
+		}
+	}
+	attachments, err := parseAttachmentLinks(body, u, id)
+	if err != nil {
+		return nil, &MCPError{Code: ErrParse, Message: err.Error()}
+	}
+	return &AttachmentsResult{RegistryID: id, SourceURL: u, Attachments: attachments, Provenance: ProcurementProvenance{RegistryID: id, SourceURL: u, SourceType: "ATTACHMENT_INDEX", RetrievedAt: time.Now().UTC()}}, nil
+}
+
+func (a *ProcurementAccess) GetAttachment(ctx context.Context, id, attachmentID string) (*AttachmentResult, error) {
+	return a.GetAttachmentRef(ctx, ProcurementRef{RegistryID: id}, attachmentID)
+}
+
+func (a *ProcurementAccess) GetAttachmentRef(ctx context.Context, ref ProcurementRef, attachmentID string) (*AttachmentResult, error) {
+	id := strings.TrimSpace(ref.RegistryID)
+	list, err := a.ListAttachmentsRef(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	var att ProcurementAttachment
+	for _, candidate := range list.Attachments {
+		if candidate.AttachmentID == strings.TrimSpace(attachmentID) {
+			att = candidate
+			break
+		}
+	}
+	if att.AttachmentID == "" {
+		return nil, &MCPError{Code: ErrAttachmentNotFound, Message: "attachment_id is not listed for this registry_id"}
+	}
+	body, ct, err := a.fetch(ctx, att.SourceURL, a.MaxDownload)
+	if err != nil {
+		return nil, err
+	}
+	format, err := officeFormat(body, att.Extension, ct)
+	if err != nil {
+		return nil, err
+	}
+	text, err := extractOfficeText(body, format, a.MaxText)
+	if err != nil {
+		return nil, err
+	}
+	return &AttachmentResult{RegistryID: id, AttachmentID: att.AttachmentID, Name: att.Name, SourceURL: att.SourceURL, Format: format, ContentType: ct, SizeBytes: int64(len(body)), Content: text, Provenance: ProcurementProvenance{RegistryID: id, SourceURL: att.SourceURL, SourceType: "PROCUREMENT_ATTACHMENT", RetrievedAt: time.Now().UTC()}}, nil
 }
 
 func parseDocumentLinks(data []byte, baseURL, id string) ([]ProcurementDocument, error) {

@@ -1,0 +1,23 @@
+{
+  "run_id": "20260904T093618Z",
+  "timestamp": "2026-09-04T09:44:11.621447Z",
+  "status": "success",
+  "evaluation_type": "transfer eval of the existing Discovery prompt",
+  "prompt_contract": "The prompt/output contract is unchanged.",
+  "source_representation": "Zakupki uses the common factual SourceItem representation, which contains richer source-specific factual fields than the historical TGL adapter.",
+  "dataset_path": "data/evals/zakupki-real-v0/items.json",
+  "dataset_hash": "5bd73e8c7ff805f6595549a524062e09ef82a27bcadbaf92b27d41506f8dd08d",
+  "discovery_prompt_path": "agents/discovery/prompt.md",
+  "discovery_prompt_hash": "494f2d28df84bb095d052863f1e722469f8f7b8dde5e44aa76d112cefa9f80d7",
+  "labelled_count": 49,
+  "excluded_count": 1,
+  "model": null,
+  "provider": null,
+  "runtime_errors": 0,
+  "usage": {
+    "api_calls": 49,
+    "input_tokens": 187698,
+    "output_tokens": 7746,
+    "estimated_cost_usd": 0.013598746
+  }
+}
