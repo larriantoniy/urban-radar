@@ -97,12 +97,14 @@ go run ./cmd/zakupki-probe -source html -limit 50 -export data/evals/zakupki-rea
 The HTML adapter supports bounded pagination. `-days 7` (the probe default)
 passes `publishDateFrom` and `publishDateTo` in the EIS form's
 `DD.MM.YYYY` format; `-limit` applies to the final unique raw universe and is
-capped at 100. Pages retain all configured query parameters and change only
-`pageNumber`; a 100-page safety bound prevents unbounded crawling. Results are
-deduplicated by registry ID and ordered by `published_at` descending, then
-registry ID ascending. The adapter then performs one ordinary HTTP card
-request per item for enrichment. It does not use a browser, bypass CAPTCHA, or
-alter editorial decisions. HTML selectors are isolated in
+capped at 100 for this diagnostic probe. Runtime collection uses the separate
+complete-window path: it has no item-count limit, and treats the 100-page
+safety guard as an incomplete collection rather than advancing a checkpoint.
+Pages retain all configured query parameters and change only `pageNumber`.
+Results are deduplicated by registry ID and ordered by `published_at`
+descending, then registry ID ascending. The adapter then performs one ordinary
+HTTP card request per item for enrichment. It does not use a browser, bypass
+CAPTCHA, or alter editorial decisions. HTML selectors are isolated in
 `zakupki/html_search.go`.
 
 ### Canonical URL resolution
