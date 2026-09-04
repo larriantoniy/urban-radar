@@ -36,6 +36,13 @@ func main() {
 		return
 	}
 	access := zakupki.NewProcurementAccess(client)
+	server := newServer(access)
+	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+		log.Printf("zakupki-mcp: %v", err)
+	}
+}
+
+func newServer(access *zakupki.ProcurementAccess) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "urban-radar-zakupki", Version: "0.1.0"}, nil)
 	mcp.AddTool(server, &mcp.Tool{Name: "get_procurement", Description: "Get factual procurement card data from zakupki.gov.ru."}, func(ctx context.Context, _ *mcp.CallToolRequest, in registryInput) (*mcp.CallToolResult, any, error) {
 		v, err := access.GetProcurementRef(ctx, zakupki.ProcurementRef{RegistryID: in.RegistryID, SourceURL: in.SourceURL})
@@ -72,9 +79,7 @@ func main() {
 		}
 		return toolJSON(v), nil, nil
 	})
-	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
-		log.Printf("zakupki-mcp: %v", err)
-	}
+	return server
 }
 
 func toolError(err error) *mcp.CallToolResult {

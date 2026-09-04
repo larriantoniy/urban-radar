@@ -82,8 +82,8 @@ type DocumentResult struct {
 	Provenance ProcurementProvenance `json:"provenance"`
 }
 
-// ProcurementAccess provides bounded, primary-source access for the future
-// Research Agent. BaseURL is injectable only for deterministic tests.
+// ProcurementAccess provides bounded primary-source access for Research.
+// BaseURL is injectable only for deterministic tests.
 type ProcurementAccess struct {
 	Client      *http.Client
 	BaseURL     string

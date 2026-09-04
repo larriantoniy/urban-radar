@@ -22,6 +22,7 @@ func TestValidateProcurementRef(t *testing.T) {
 		"arbitrary path":  {RegistryID: valid.RegistryID, SourceURL: "https://zakupki.gov.ru/epz/order/notice/zk20/view/documents.html?regNumber=0142200001326017137"},
 		"custom port":     {RegistryID: valid.RegistryID, SourceURL: "https://zakupki.gov.ru:443/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017137"},
 		"userinfo":        {RegistryID: valid.RegistryID, SourceURL: "https://user@zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017137"},
+		"fragment":        {RegistryID: valid.RegistryID, SourceURL: "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0142200001326017137#section"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := validateProcurementRef(ref); err == nil {
