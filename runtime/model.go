@@ -115,6 +115,19 @@ type ResearchOutcome struct {
 	Output json.RawMessage
 }
 
+// ContentRequest is a rendering-only package assembled from already persisted
+// editorial evidence. It never changes a SourceItem's runtime state.
+type ContentRequest struct {
+	Item            source.SourceItem `json:"source_item"`
+	DiscoveryOutput json.RawMessage   `json:"discovery_output"`
+	EditorOutput    json.RawMessage   `json:"editor_output"`
+	SourceLabel     string            `json:"source_label"`
+}
+
+type ContentOutcome struct {
+	Output json.RawMessage
+}
+
 type AgentExecutor interface {
 	Discover(context.Context, source.SourceItem) (DiscoveryOutcome, Usage, error)
 	Edit(context.Context, source.SourceItem, json.RawMessage, json.RawMessage) (EditorOutcome, Usage, error)

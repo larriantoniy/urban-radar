@@ -51,3 +51,20 @@ func TestDiscoveryInvocationTimeoutIsDiagnosable(t *testing.T) {
 		t.Fatalf("error=%v", err)
 	}
 }
+
+func TestContentOutputContractPreservesSourceAndHumanReview(t *testing.T) {
+	url := "https://example.test/source"
+	valid := []byte(`{"schema_version":"content-draft-v1","style_version":"urban-radar-editorial-style-v1","platform":"vk","event_type":"OTHER","hook":"Hook","body":"Body","closing":"","source_label":"Example","source_url":"https://example.test/source","post_text":"Hook\n\nИсточник: Example — https://example.test/source","fact_warnings":[],"human_review_required":true}`)
+	if err := validateContentOutput(valid, "Example", url); err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range [][]byte{
+		[]byte(`{"schema_version":"content-draft-v1"}`),
+		[]byte(`{"schema_version":"content-draft-v1","style_version":"urban-radar-editorial-style-v1","platform":"vk","event_type":"OTHER","hook":"Hook","body":"Body","closing":"","source_label":"Other","source_url":"https://bad.test","post_text":"text https://bad.test","fact_warnings":[],"human_review_required":true}`),
+		[]byte(`{"schema_version":"content-draft-v1","style_version":"urban-radar-editorial-style-v1","platform":"vk","event_type":"OTHER","hook":"Hook","body":"Body","closing":"","source_label":"Example","source_url":"https://example.test/source","post_text":"text https://example.test/source","fact_warnings":[],"human_review_required":false}`),
+	} {
+		if err := validateContentOutput(raw, "Example", url); err == nil {
+			t.Fatalf("expected invalid content output: %s", raw)
+		}
+	}
+}

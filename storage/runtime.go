@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"urban-radar/content"
 	"urban-radar/newscheck"
 	urruntime "urban-radar/runtime"
 	"urban-radar/source"
@@ -23,6 +24,7 @@ func NewPostgresStore(db *sql.DB) *PostgresStore { return &PostgresStore{db: db}
 
 var _ urruntime.Store = (*PostgresStore)(nil)
 var _ newscheck.Store = (*PostgresStore)(nil)
+var _ content.Store = (*PostgresStore)(nil)
 
 func (r *PostgresStore) Get(ctx context.Context, sourceName, sourceItemID string) (urruntime.ItemRecord, error) {
 	row := r.db.QueryRowContext(ctx, runtimeSelect+` WHERE source=$1 AND source_item_id=$2`, sourceName, sourceItemID)
@@ -163,6 +165,92 @@ func (r *PostgresStore) FinishNewsCheck(ctx context.Context, summary newscheck.S
 	}
 	_, err = r.db.ExecContext(ctx, `UPDATE news_check_runs SET finished_at=$2,status=$3,summary=$4 WHERE run_id=$1`, summary.RunID, summary.FinishedAt, runStatus, data)
 	return err
+}
+
+// LoadReadyEvents returns only explicitly requested terminal editorial records.
+// It never invokes, advances, or rewrites the runtime pipeline.
+func (r *PostgresStore) LoadReadyEvents(ctx context.Context, refs []content.SourceRef) ([]content.ReadyEvent, error) {
+	result := make([]content.ReadyEvent, 0, len(refs))
+	for _, ref := range refs {
+		record, err := r.Get(ctx, ref.Source, ref.SourceItemID)
+		if err != nil {
+			return nil, err
+		}
+		if record.State != urruntime.StateReadyToPublish || record.Discovery == nil || record.Editor == nil {
+			return nil, fmt.Errorf("%s/%s is not a materialized READY_TO_PUBLISH event", ref.Source, ref.SourceItemID)
+		}
+		if !editorOutputPublishes(record.Editor.Output) {
+			return nil, fmt.Errorf("%s/%s has no persisted Editor PUBLISH decision", ref.Source, ref.SourceItemID)
+		}
+		result = append(result, content.ReadyEvent{Item: record.Item, Discovery: *record.Discovery, Editor: *record.Editor})
+	}
+	return result, nil
+}
+
+func editorOutputPublishes(raw json.RawMessage) bool {
+	var value struct {
+		Decisions []struct {
+			Decision string `json:"decision"`
+		} `json:"decisions"`
+	}
+	return json.Unmarshal(raw, &value) == nil && len(value.Decisions) == 1 && value.Decisions[0].Decision == "PUBLISH"
+}
+
+func (r *PostgresStore) SaveContentDraft(ctx context.Context, draft content.Draft) error {
+	warnings, err := json.Marshal(draft.FactWarnings)
+	if err != nil {
+		return err
+	}
+	usage, err := json.Marshal(draft.Usage)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, `INSERT INTO content_drafts
+(source,source_item_id,schema_version,style_version,platform,event_type,hook,body,closing,
+ source_label,source_url,post_text,fact_warnings,human_review_required,human_review_status,
+ source_input_hash,editor_policy_id,editor_input_hash,model,provider,generated_at,usage,raw_output)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+ON CONFLICT (source,source_item_id,style_version,platform,source_input_hash) DO UPDATE SET
+ event_type=EXCLUDED.event_type,hook=EXCLUDED.hook,body=EXCLUDED.body,closing=EXCLUDED.closing,
+ source_label=EXCLUDED.source_label,source_url=EXCLUDED.source_url,post_text=EXCLUDED.post_text,
+ fact_warnings=EXCLUDED.fact_warnings,human_review_required=EXCLUDED.human_review_required,
+ model=EXCLUDED.model,provider=EXCLUDED.provider,generated_at=EXCLUDED.generated_at,
+ usage=EXCLUDED.usage,raw_output=EXCLUDED.raw_output
+WHERE content_drafts.human_review_status='PENDING'`,
+		draft.Source, draft.SourceItemID, draft.SchemaVersion, draft.StyleVersion, draft.Platform,
+		draft.EventType, draft.Hook, draft.Body, draft.Closing, draft.SourceLabel, draft.SourceURL,
+		draft.PostText, warnings, draft.HumanReviewRequired, draft.HumanReviewStatus,
+		draft.SourceInputHash, draft.EditorPolicyID, draft.EditorInputHash, draft.Model, draft.Provider,
+		draft.GeneratedAt, usage, draft.RawOutput)
+	return err
+}
+
+func (r *PostgresStore) FindContentDraft(ctx context.Context, sourceName, sourceItemID, styleVersion, platform, sourceInputHash string) (content.Draft, bool, error) {
+	var draft content.Draft
+	var warnings, usage, raw []byte
+	err := r.db.QueryRowContext(ctx, `SELECT source,source_item_id,schema_version,style_version,platform,event_type,hook,body,closing,
+source_label,source_url,post_text,fact_warnings,human_review_required,human_review_status,source_input_hash,
+editor_policy_id,editor_input_hash,model,provider,generated_at,usage,raw_output
+FROM content_drafts WHERE source=$1 AND source_item_id=$2 AND style_version=$3 AND platform=$4 AND source_input_hash=$5`,
+		sourceName, sourceItemID, styleVersion, platform, sourceInputHash).Scan(
+		&draft.Source, &draft.SourceItemID, &draft.SchemaVersion, &draft.StyleVersion, &draft.Platform, &draft.EventType,
+		&draft.Hook, &draft.Body, &draft.Closing, &draft.SourceLabel, &draft.SourceURL, &draft.PostText, &warnings,
+		&draft.HumanReviewRequired, &draft.HumanReviewStatus, &draft.SourceInputHash, &draft.EditorPolicyID,
+		&draft.EditorInputHash, &draft.Model, &draft.Provider, &draft.GeneratedAt, &usage, &raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return content.Draft{}, false, nil
+	}
+	if err != nil {
+		return content.Draft{}, false, err
+	}
+	if err := json.Unmarshal(warnings, &draft.FactWarnings); err != nil {
+		return content.Draft{}, false, err
+	}
+	if err := json.Unmarshal(usage, &draft.Usage); err != nil {
+		return content.Draft{}, false, err
+	}
+	draft.RawOutput = raw
+	return draft, true, nil
 }
 
 const runtimeSelect = `SELECT source,source_item_id,source_url,title,summary,body_text,

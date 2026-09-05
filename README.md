@@ -90,8 +90,8 @@ error alone does not make the whole collection run failed.
 and this command performs no publication. `UPDATE_PROJECT` becomes terminal
 `PROJECT_ACTION`; no project store is claimed to have been updated.
 
-This Runtime V0 is implemented and deterministically tested, but has not yet
-been live-validated as a complete persisted news-check run. See
+This Runtime V0 has been live-validated for observed daily Discovery/Editor
+operation; it remains human-in-the-loop and performs no publication. See
 [`docs/runtime.md`](docs/runtime.md) for state, crash, and configuration
 semantics.
 
@@ -104,7 +104,9 @@ pipeline. Historical prompt and run versions remain immutable evidence.
 PostgreSQL is now required by the manual `news check` runtime for source-level
 deduplication, checkpoints, resumable item state and run summaries. It is not a
 general CityEvent/project memory. Scheduling, publishers, Telegram/MAX
-delivery, autonomous operation and a Content Agent remain future work.
+delivery and autonomous operation remain future work. Content Agent V1 exists
+only as a human-reviewed draft experiment; it does not publish or invoke a VK
+API.
 
 Future user-facing rendering should expand specialist abbreviations on first
 use (for example, «МАФ» → «малые архитектурные формы») and prefer concrete

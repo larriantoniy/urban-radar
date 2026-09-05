@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"urban-radar/content"
 	"urban-radar/newscheck"
 	urruntime "urban-radar/runtime"
 	"urban-radar/source"
@@ -103,5 +104,45 @@ func TestPostgresStoreFinalizesNewsCheckLifecycle(t *testing.T) {
 	}
 	if status != "INTERRUPTED" || !finished.Equal(summary.FinishedAt) {
 		t.Fatalf("status=%q finished=%s", status, finished)
+	}
+}
+
+func TestPostgresStorePersistsContentDraftSeparately(t *testing.T) {
+	url := os.Getenv("URBAN_RADAR_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("URBAN_RADAR_TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	db, err := OpenPostgres(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := NewPostgresStore(db)
+	now := time.Date(2026, 9, 5, 10, 0, 0, 0, time.UTC)
+	item := source.SourceItem{Source: "storage-test", SourceItemID: "content-draft-contract", URL: "https://example.test/content", Title: "content", Text: "facts", RetrievedAt: now}
+	defer db.ExecContext(ctx, `DELETE FROM source_items WHERE source=$1 AND source_item_id=$2`, item.Source, item.SourceItemID)
+	record, _, err := store.UpsertSeen(ctx, item, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.State = urruntime.StateReadyToPublish
+	record.Discovery = &urruntime.StageResult{Output: []byte(`{"outcome":"CANDIDATE"}`), At: now}
+	record.Editor = &urruntime.StageResult{PolicyID: "editor-v1:test", InputHash: "editor-input", Output: []byte(`{"decisions":[{"decision":"PUBLISH"}]}`), At: now}
+	record.UpdatedAt = now
+	if err := store.Save(ctx, record); err != nil {
+		t.Fatal(err)
+	}
+	draft := content.Draft{Source: item.Source, SourceItemID: item.SourceItemID, SchemaVersion: content.SchemaVersion, StyleVersion: content.StyleVersion, Platform: content.PlatformVK, EventType: "OTHER", Hook: "Hook", Body: "Body", SourceLabel: "example", SourceURL: item.URL, PostText: "Hook\n\nИсточник: https://example.test/content", FactWarnings: []string{}, HumanReviewRequired: true, HumanReviewStatus: "PENDING", SourceInputHash: "content-input", EditorPolicyID: "editor-v1:test", EditorInputHash: "editor-input", Model: "test", Provider: "test", GeneratedAt: now, RawOutput: []byte(`{}`)}
+	if err := store.SaveContentDraft(ctx, draft); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	if err := db.QueryRowContext(ctx, `SELECT human_review_status FROM content_drafts WHERE source=$1 AND source_item_id=$2 AND source_input_hash=$3`, item.Source, item.SourceItemID, draft.SourceInputHash).Scan(&status); err != nil || status != "PENDING" {
+		t.Fatalf("status=%q err=%v", status, err)
+	}
+	stored, err := store.Get(ctx, item.Source, item.SourceItemID)
+	if err != nil || stored.State != urruntime.StateReadyToPublish || stored.Editor == nil {
+		t.Fatalf("source item was mutated: %+v err=%v", stored, err)
 	}
 }

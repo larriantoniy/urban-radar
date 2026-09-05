@@ -13,6 +13,8 @@ migrations/001_source_items.sql
 migrations/002_incremental_news_runtime.sql
 migrations/003_selective_source_materialization.sql
 migrations/004_news_check_run_lifecycle.sql
+migrations/005_content_drafts.sql
+migrations/006_content_draft_review_notes.sql
 ```
 
 The application-level persistence ports live beside `runtime/` and
@@ -31,6 +33,8 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001_source_items.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/002_incremental_news_runtime.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/003_selective_source_materialization.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/004_news_check_run_lifecycle.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/005_content_drafts.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/006_content_draft_review_notes.sql
 ```
 
 `storage.OpenPostgres` owns connection setup (including a startup ping), and
@@ -53,3 +57,8 @@ Migration 001 contains historical prepared publication columns. Runtime V0
 does not use them and never writes a fake publication record. Its terminal
 editorial state is `READY_TO_PUBLISH`, which is distinct from a future
 `PUBLISHED` state.
+
+Migrations 005–006 add the separate `content_drafts` experiment table. A draft
+is always `human_review_required`; review is recorded as `PENDING`, `APPROVED`,
+`APPROVED_WITH_NOTES`, or `REJECTED`, with optional human notes. This is not a
+publisher state and does not call VK or mark a source item as published.

@@ -149,6 +149,28 @@ does **not** authorize autonomous publishing: `READY_TO_PUBLISH` remains a
 human-in-the-loop editorial candidate. The next evaluation stage is daily
 human-reviewed editorial evaluation, not automated publication.
 
+## Content Experiment V1 baseline
+
+On 2026-09-05, Content Agent V1 generated four drafts from existing
+`READY_TO_PUBLISH` items only: `tgl/25864`, `tgl/25865`, `tgl/25868`, and
+`zakupki/0142200001326017126`. Human review found no factual, stage-truth, or
+source-provenance failures: one draft was `APPROVED` and three were
+`APPROVED_WITH_NOTES` for editorial style. The notes identify two future style
+questions: avoid ceremonial attendee lists that do not explain the city change,
+and do not ask readers to discover an unconfirmed material fact.
+
+The experiment produced four valid persisted drafts in nine API calls; five
+responses were rejected by the structured-output contract. Reported aggregate
+usage was 141,212 tokens and $0.005712, while the four accepted drafts used
+64,901 tokens and $0.003547. This is a small, human-reviewed experiment, not
+authorization for autonomous publication. The pipeline boundary remains:
+
+```text
+READY_TO_PUBLISH → ContentDraft → HUMAN REVIEW → future Publisher
+```
+
+No VK API or publisher is implemented or invoked.
+
 ## Running
 
 Configure PostgreSQL and apply all migrations documented in

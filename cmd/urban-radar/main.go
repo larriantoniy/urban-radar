@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"urban-radar/content"
 	"urban-radar/newscheck"
 	urruntime "urban-radar/runtime"
 	"urban-radar/storage"
@@ -21,6 +22,10 @@ import (
 func main() {
 	if len(os.Args) >= 3 && os.Args[1] == "news" && os.Args[2] == "check" {
 		checkNews(os.Args[3:])
+		return
+	}
+	if len(os.Args) >= 3 && os.Args[1] == "content" && os.Args[2] == "experiment-v1" {
+		contentExperimentV1(os.Args[3:])
 		return
 	}
 	if len(os.Args) < 3 || os.Args[1] != "tgl" {
@@ -48,6 +53,44 @@ func main() {
 		fail(err.Error())
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(value); err != nil {
+		fail(err.Error())
+	}
+}
+
+func contentExperimentV1(args []string) {
+	flags := flag.NewFlagSet("content experiment-v1", flag.ContinueOnError)
+	model := flags.String("model", "deepseek/deepseek-v4-flash-0731", "Hermes model")
+	provider := flags.String("provider", "openrouter", "Hermes provider")
+	root := flags.String("repository-root", ".", "repository root containing agents/ and .hermes/skills/")
+	if err := flags.Parse(args); err != nil {
+		fail(err.Error())
+	}
+	if flags.NArg() != 0 {
+		fail("usage: urban-radar content experiment-v1 [flags]")
+	}
+	ctx := context.Background()
+	databaseURL, err := storage.DatabaseURLFromEnv()
+	if err != nil {
+		fail("content experiment requires persistent PostgreSQL: " + err.Error())
+	}
+	db, err := storage.OpenPostgres(ctx, databaseURL)
+	if err != nil {
+		fail(err.Error())
+	}
+	defer db.Close()
+	repositoryRoot, err := filepath.Abs(*root)
+	if err != nil {
+		fail(err.Error())
+	}
+	agents, err := urruntime.NewHermesExecutor(repositoryRoot, *model, *provider)
+	if err != nil {
+		fail("load content agent: " + err.Error())
+	}
+	summary, err := (content.Experiment{Store: storage.NewPostgresStore(db), Agent: agents, Model: *model, Provider: *provider}).RunV1(ctx)
+	if encodeErr := json.NewEncoder(os.Stdout).Encode(summary); encodeErr != nil {
+		fail(encodeErr.Error())
+	}
+	if err != nil {
 		fail(err.Error())
 	}
 }
@@ -125,7 +168,7 @@ func writeSummary(summary newscheck.Summary, err error) {
 }
 
 func usage() string {
-	return "usage: urban-radar tgl list | urban-radar tgl get <url> | urban-radar news check [--preflight] [flags]"
+	return "usage: urban-radar tgl list | urban-radar tgl get <url> | urban-radar news check [--preflight] [flags] | urban-radar content experiment-v1 [flags]"
 }
 
 func fail(message string) { fmt.Fprintln(os.Stderr, "urban-radar:", message); os.Exit(1) }

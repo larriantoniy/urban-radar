@@ -26,6 +26,7 @@ type HermesExecutor struct {
 	DiscoveryPrompt  []byte
 	EditorPrompt     []byte
 	ResearchPrompt   []byte
+	ContentPrompt    []byte
 	policies         Policies
 }
 
@@ -47,9 +48,31 @@ func NewHermesExecutor(repositoryRoot, model, provider string) (*HermesExecutor,
 	if err != nil {
 		return nil, err
 	}
-	e := &HermesExecutor{Command: "hermes", Model: model, Provider: provider, DiscoveryTimeout: DefaultDiscoveryTimeout, DiscoveryPrompt: discovery, EditorPrompt: editor, ResearchPrompt: research}
+	content, err := read("agents/content/prompt-v1.md")
+	if err != nil {
+		return nil, err
+	}
+	e := &HermesExecutor{Command: "hermes", Model: model, Provider: provider, DiscoveryTimeout: DefaultDiscoveryTimeout, DiscoveryPrompt: discovery, EditorPrompt: editor, ResearchPrompt: research, ContentPrompt: content}
 	e.policies = Policies{Discovery: "discovery-runtime-v0:" + digest(discovery), Editor: "editor-v1:" + digest(editor), Research: "research-v0.2:" + digest(research)}
 	return e, nil
+}
+
+// GenerateContent renders an already accepted editorial event. It deliberately
+// uses no tools and does not participate in the runtime Coordinator.
+func (e *HermesExecutor) GenerateContent(ctx context.Context, request ContentRequest) (ContentOutcome, Usage, error) {
+	payload, err := json.Marshal(request)
+	if err != nil {
+		return ContentOutcome{}, Usage{}, err
+	}
+	prompt := string(e.ContentPrompt) + "\n\nEDITORIAL EVENT PACKAGE\nUse only this persisted factual package.\n\n" + string(payload)
+	raw, usage, err := e.runWithSkills(ctx, prompt, "", []string{"urban-radar-editorial-style-v1"})
+	if err != nil {
+		return ContentOutcome{}, usage, err
+	}
+	if err := validateContentOutput(raw, request.SourceLabel, request.Item.URL); err != nil {
+		return ContentOutcome{}, usage, fmt.Errorf("Content schema: %w", err)
+	}
+	return ContentOutcome{Output: raw}, usage, nil
 }
 
 func (e *HermesExecutor) Policies() Policies { return e.policies }
@@ -214,6 +237,10 @@ func (e *HermesExecutor) Research(ctx context.Context, request ResearchRequest) 
 }
 
 func (e *HermesExecutor) run(ctx context.Context, prompt, toolset string) (json.RawMessage, Usage, error) {
+	return e.runWithSkills(ctx, prompt, toolset, nil)
+}
+
+func (e *HermesExecutor) runWithSkills(ctx context.Context, prompt, toolset string, skills []string) (json.RawMessage, Usage, error) {
 	tmp, err := os.MkdirTemp("", "urban-radar-hermes-")
 	if err != nil {
 		return nil, Usage{}, err
@@ -225,6 +252,9 @@ func (e *HermesExecutor) run(ctx context.Context, prompt, toolset string) (json.
 		command = "hermes"
 	}
 	args := []string{"--oneshot", prompt, "--toolsets", toolset, "--usage-file", usagePath}
+	for _, skill := range skills {
+		args = append(args, "--skills", skill)
+	}
 	if e.Model != "" {
 		args = append(args, "--model", e.Model)
 	}
