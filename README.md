@@ -105,6 +105,7 @@ Research policy.
 ```sh
 go run ./cmd/urban-radar tgl list
 go run ./cmd/urban-radar tgl get https://tgl.ru/news/item/25860-razgovor-o-vazhnom/
+go run ./cmd/urban-radar news check --preflight
 go run ./cmd/urban-radar news check
 go run ./cmd/tgl-mcp
 go run ./cmd/zakupki-mcp

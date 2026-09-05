@@ -95,6 +95,19 @@ external `ZAKUPKI_CA_FILE`. Then run:
 go run ./cmd/urban-radar news check
 ```
 
+Before a first live agent batch, inspect the same collection semantics without
+committing state:
+
+```sh
+go run ./cmd/urban-radar news check --preflight
+```
+
+Preflight takes the same advisory lock, derives the same bootstrap/checkpoint
+windows, calls the same collectors, and reports received/unique/new/known and
+would-be processable counts. It does not create a `news_check_runs` row, write
+or update a SourceItem, advance a checkpoint, initialize Hermes, or invoke an
+agent.
+
 Optional flags expose the overlap, bootstrap lookback, pagination safety bound,
 repository root, model and provider. The command writes one JSON summary with
 per-source windows/counts/errors, pipeline terminal counts and aggregate agent

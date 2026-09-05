@@ -2,11 +2,13 @@ package newscheck
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
 
 	urruntime "urban-radar/runtime"
+	"urban-radar/source"
 )
 
 type Runner struct {
@@ -20,15 +22,7 @@ type Runner struct {
 func (r *Runner) CheckNews(ctx context.Context) (Summary, error) {
 	started := r.now()
 	config := r.Config.withDefaults()
-	summary := Summary{
-		RunID: started.Format("20060102T150405.000000000Z"), Status: "FAILED", StartedAt: started,
-		Config: ConfigSummary{
-			OverlapSeconds: int64(config.Overlap.Seconds()), BootstrapLookbackSeconds: int64(config.BootstrapLookback.Seconds()),
-			MaxPages: config.MaxPages, ProcessingOrder: "published_at ASC, source ASC, source_item_id ASC",
-			Model: config.Model, Provider: config.Provider,
-		},
-		Sources: make(map[string]SourceSummary),
-	}
+	summary := r.newSummary(started, config)
 	release, err := r.Store.AcquireNewsCheck(ctx)
 	if err != nil {
 		return summary, err
@@ -41,19 +35,18 @@ func (r *Runner) CheckNews(ctx context.Context) (Summary, error) {
 	sourceSuccesses := 0
 	for _, collector := range r.Collectors {
 		name := collector.Name()
-		checkpoint, found, checkpointErr := r.Store.GetCheckpoint(ctx, name)
-		if checkpointErr != nil {
-			summary.Sources[name] = SourceSummary{Status: "ERROR", Errors: 1, Error: checkpointErr.Error()}
+		collection, sourceSummary, collectErr := r.collectSource(ctx, collector, started, config)
+		if sourceSummary.Status == "ERROR" && collection.Items == nil {
+			summary.Sources[name] = sourceSummary
 			continue
 		}
-		from := started.Add(-config.BootstrapLookback)
-		if found {
-			from = checkpoint.Add(-config.Overlap)
-		}
-		window := Window{From: from, To: started, MaxPages: config.MaxPages}
-		collection, collectErr := collector.Collect(ctx, window)
-		sourceSummary := SourceSummary{Status: "SUCCESS", WindowFrom: from, WindowTo: started, PagesRead: collection.PagesRead, Received: len(collection.Items)}
+		seen := make(map[string]struct{})
 		for _, item := range collection.Items {
+			key := itemKey(item)
+			if _, duplicate := seen[key]; duplicate {
+				continue
+			}
+			seen[key] = struct{}{}
 			_, inserted, upsertErr := r.Store.UpsertSeen(ctx, item, started)
 			if upsertErr != nil {
 				collectErr = fmt.Errorf("upsert %s/%s: %w", item.Source, item.SourceItemID, upsertErr)
@@ -143,6 +136,120 @@ func (r *Runner) CheckNews(ctx context.Context) (Summary, error) {
 		return summary, err
 	}
 	return summary, nil
+}
+
+// Preflight uses the same source windows and collectors as CheckNews, but is
+// read-only: it never creates a run, upserts an item, advances a checkpoint,
+// or invokes the per-item Coordinator.
+func (r *Runner) Preflight(ctx context.Context) (Summary, error) {
+	started := r.now()
+	config := r.Config.withDefaults()
+	summary := r.newSummary(started, config)
+	release, err := r.Store.AcquireNewsCheck(ctx)
+	if err != nil {
+		return summary, err
+	}
+	defer release(context.Background())
+
+	knownProcessable := make(map[string]struct{})
+	retryableBySource := make(map[string]int)
+	processable, listErr := r.Store.ListProcessable(ctx)
+	if listErr != nil {
+		summary.Status, summary.Pipeline.Errors, summary.FinishedAt = "FAILED", 1, r.now()
+		return summary, listErr
+	}
+	for _, record := range processable {
+		knownProcessable[itemKey(record.Item)] = struct{}{}
+		if record.State == urruntime.StateError {
+			retryableBySource[record.Item.Source]++
+		}
+	}
+
+	sourceSuccesses := 0
+	newItems := make(map[string]struct{})
+	for _, collector := range r.Collectors {
+		name := collector.Name()
+		collection, sourceSummary, _ := r.collectSource(ctx, collector, started, config)
+		seen := make(map[string]struct{})
+		for _, item := range collection.Items {
+			key := itemKey(item)
+			if _, duplicate := seen[key]; duplicate {
+				continue
+			}
+			seen[key] = struct{}{}
+			if _, err := r.Store.Get(ctx, item.Source, item.SourceItemID); err == nil {
+				sourceSummary.Known++
+			} else if errors.Is(err, urruntime.ErrNotFound) {
+				sourceSummary.New++
+				newItems[key] = struct{}{}
+			} else {
+				sourceSummary.Status, sourceSummary.Errors, sourceSummary.Error = "ERROR", 1, err.Error()
+			}
+		}
+		if sourceSummary.Status == "SUCCESS" {
+			sourceSuccesses++
+		}
+		sourceSummary.Retryable = retryableBySource[name]
+		summary.Sources[name] = sourceSummary
+	}
+	for key := range newItems {
+		knownProcessable[key] = struct{}{}
+	}
+	summary.Pipeline.Processable = len(knownProcessable)
+	if sourceSuccesses == 0 {
+		summary.Status = "FAILED"
+	} else if sourceSuccesses != len(r.Collectors) {
+		summary.Status = "PARTIAL"
+	} else {
+		summary.Status = "SUCCESS"
+	}
+	summary.FinishedAt = r.now()
+	return summary, nil
+}
+
+func (r *Runner) collectSource(ctx context.Context, collector Collector, started time.Time, config Config) (Collection, SourceSummary, error) {
+	checkpoint, found, err := r.Store.GetCheckpoint(ctx, collector.Name())
+	if err != nil {
+		return Collection{}, SourceSummary{Status: "ERROR", Errors: 1, Error: err.Error()}, err
+	}
+	from := started.Add(-config.BootstrapLookback)
+	if found {
+		from = checkpoint.Add(-config.Overlap)
+	}
+	window := Window{From: from, To: started, MaxPages: config.MaxPages}
+	collection, err := collector.Collect(ctx, window)
+	summary := SourceSummary{Status: "SUCCESS", WindowFrom: from, WindowTo: started, PagesRead: collection.PagesRead, Received: len(collection.Items), Unique: uniqueItemCount(collection.Items)}
+	if err != nil || !collection.Complete {
+		summary.Status, summary.Errors = "ERROR", 1
+		if err != nil {
+			summary.Error = err.Error()
+		} else {
+			summary.Error = "source pagination safety bound reached before the temporal window completed"
+		}
+	}
+	return collection, summary, err
+}
+
+func (r *Runner) newSummary(started time.Time, config Config) Summary {
+	return Summary{
+		RunID: started.Format("20060102T150405.000000000Z"), Status: "FAILED", StartedAt: started,
+		Config: ConfigSummary{
+			OverlapSeconds: int64(config.Overlap.Seconds()), BootstrapLookbackSeconds: int64(config.BootstrapLookback.Seconds()),
+			MaxPages: config.MaxPages, ProcessingOrder: "published_at ASC, source ASC, source_item_id ASC",
+			Model: config.Model, Provider: config.Provider,
+		},
+		Sources: make(map[string]SourceSummary),
+	}
+}
+
+func itemKey(item source.SourceItem) string { return item.Source + "\x00" + item.SourceItemID }
+
+func uniqueItemCount(items []source.SourceItem) int {
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		seen[itemKey(item)] = struct{}{}
+	}
+	return len(seen)
 }
 
 func (r *Runner) now() time.Time {

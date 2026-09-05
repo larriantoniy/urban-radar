@@ -55,6 +55,7 @@ func checkNews(args []string) {
 	overlap := flags.Duration("overlap", newscheck.DefaultOverlap, "checkpoint overlap window")
 	bootstrap := flags.Duration("bootstrap-lookback", newscheck.DefaultBootstrapLookback, "first-run collection window")
 	maxPages := flags.Int("max-pages", newscheck.DefaultMaxPages, "per-source pagination safety bound")
+	preflight := flags.Bool("preflight", false, "collect and inspect without writing state or invoking agents")
 	model := flags.String("model", "deepseek/deepseek-v4-flash-0731", "Hermes model")
 	provider := flags.String("provider", "openrouter", "Hermes provider")
 	root := flags.String("repository-root", ".", "repository root containing agents/")
@@ -75,6 +76,24 @@ func checkNews(args []string) {
 	}
 	defer db.Close()
 
+	stateStore := storage.NewPostgresStore(db)
+	zakupkiHTTP, err := zakupki.NewHTTPClientFromEnv(20 * time.Second)
+	if err != nil {
+		fail(err.Error())
+	}
+	runner := newscheck.Runner{
+		Store: stateStore,
+		Collectors: []newscheck.Collector{
+			newscheck.TGLCollector{Client: tgl.NewClient(15 * time.Second)},
+			newscheck.ZakupkiCollector{Search: zakupki.NewZakupkiSearchHTMLSource(zakupkiHTTP), CardFetcher: zakupki.HTTPCardFetcher{Client: zakupkiHTTP}},
+		},
+		Config: newscheck.Config{Overlap: *overlap, BootstrapLookback: *bootstrap, MaxPages: *maxPages, Model: *model, Provider: *provider},
+	}
+	if *preflight {
+		summary, err := runner.Preflight(ctx)
+		writeSummary(summary, err)
+		return
+	}
 	repositoryRoot, err := filepath.Abs(*root)
 	if err != nil {
 		fail(err.Error())
@@ -83,25 +102,15 @@ func checkNews(args []string) {
 	if err != nil {
 		fail("load agent policies: " + err.Error())
 	}
-	stateStore := storage.NewPostgresStore(db)
-	coordinator := &urruntime.Coordinator{
+	runner.Processor = &urruntime.Coordinator{
 		Store: stateStore, Agents: agents, Policies: agents.Policies(),
 		ResearchSupportedSources: map[string]bool{zakupki.SourceName: true},
 	}
-	zakupkiHTTP, err := zakupki.NewHTTPClientFromEnv(20 * time.Second)
-	if err != nil {
-		fail(err.Error())
-	}
-	runner := newscheck.Runner{
-		Store:     stateStore,
-		Processor: coordinator,
-		Collectors: []newscheck.Collector{
-			newscheck.TGLCollector{Client: tgl.NewClient(15 * time.Second)},
-			newscheck.ZakupkiCollector{Search: zakupki.NewZakupkiSearchHTMLSource(zakupkiHTTP), CardFetcher: zakupki.HTTPCardFetcher{Client: zakupkiHTTP}},
-		},
-		Config: newscheck.Config{Overlap: *overlap, BootstrapLookback: *bootstrap, MaxPages: *maxPages, Model: *model, Provider: *provider},
-	}
 	summary, err := runner.CheckNews(ctx)
+	writeSummary(summary, err)
+}
+
+func writeSummary(summary newscheck.Summary, err error) {
 	if encodeErr := json.NewEncoder(os.Stdout).Encode(summary); encodeErr != nil {
 		fail(encodeErr.Error())
 	}
@@ -111,7 +120,7 @@ func checkNews(args []string) {
 }
 
 func usage() string {
-	return "usage: urban-radar tgl list | urban-radar tgl get <url> | urban-radar news check [flags]"
+	return "usage: urban-radar tgl list | urban-radar tgl get <url> | urban-radar news check [--preflight] [flags]"
 }
 
 func fail(message string) { fmt.Fprintln(os.Stderr, "urban-radar:", message); os.Exit(1) }

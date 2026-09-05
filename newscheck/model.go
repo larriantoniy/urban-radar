@@ -41,6 +41,7 @@ type Store interface {
 	FinishNewsCheck(context.Context, Summary) error
 	GetCheckpoint(context.Context, string) (time.Time, bool, error)
 	AdvanceCheckpoint(context.Context, string, time.Time) error
+	Get(context.Context, string, string) (urruntime.ItemRecord, error)
 	UpsertSeen(context.Context, source.SourceItem, time.Time) (urruntime.ItemRecord, bool, error)
 	ListProcessable(context.Context) ([]urruntime.ItemRecord, error)
 }
@@ -55,6 +56,7 @@ type SourceSummary struct {
 	WindowTo           time.Time `json:"window_to"`
 	PagesRead          int       `json:"pages_read"`
 	Received           int       `json:"received"`
+	Unique             int       `json:"unique"`
 	New                int       `json:"new"`
 	Known              int       `json:"known"`
 	Retryable          int       `json:"retryable"`

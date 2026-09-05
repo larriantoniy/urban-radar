@@ -18,6 +18,9 @@ type fakeStore struct {
 	advanced    map[string]int
 	locked      bool
 	summaries   []Summary
+	upserts     int
+	starts      int
+	finishes    int
 }
 
 func newFakeStore() *fakeStore {
@@ -31,8 +34,9 @@ func (s *fakeStore) AcquireNewsCheck(context.Context) (func(context.Context) err
 	s.locked = true
 	return func(context.Context) error { s.locked = false; return nil }, nil
 }
-func (*fakeStore) StartNewsCheck(context.Context, string, time.Time) error { return nil }
+func (s *fakeStore) StartNewsCheck(context.Context, string, time.Time) error { s.starts++; return nil }
 func (s *fakeStore) FinishNewsCheck(_ context.Context, summary Summary) error {
+	s.finishes++
 	s.summaries = append(s.summaries, summary)
 	return nil
 }
@@ -44,7 +48,15 @@ func (s *fakeStore) AdvanceCheckpoint(_ context.Context, name string, value time
 	s.checkpoints[name], s.advanced[name] = value, s.advanced[name]+1
 	return nil
 }
+func (s *fakeStore) Get(_ context.Context, sourceName, sourceItemID string) (urruntime.ItemRecord, error) {
+	record, ok := s.items[sourceName+"/"+sourceItemID]
+	if !ok {
+		return urruntime.ItemRecord{}, urruntime.ErrNotFound
+	}
+	return record, nil
+}
 func (s *fakeStore) UpsertSeen(_ context.Context, item source.SourceItem, now time.Time) (urruntime.ItemRecord, bool, error) {
+	s.upserts++
 	k := key(item)
 	record, exists := s.items[k]
 	if !exists {
@@ -223,5 +235,28 @@ func TestRunnerSourceFailureStatus(t *testing.T) {
 				t.Fatalf("summary=%+v advanced=%v err=%v", summary, store.advanced, err)
 			}
 		})
+	}
+}
+
+func TestPreflightUsesRuntimeWindowsWithoutWritesOrAgentCalls(t *testing.T) {
+	now := time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC)
+	store := newFakeStore()
+	known := item("tgl", "known", now.Add(-time.Hour))
+	store.items[key(known)] = urruntime.ItemRecord{Item: known, State: urruntime.StateReadyToPublish}
+	retry := item("zakupki", "retry", now.Add(-72*time.Hour))
+	store.items[key(retry)] = urruntime.ItemRecord{Item: retry, State: urruntime.StateError, RetryStage: urruntime.StateDiscovery}
+	tgl := &fakeCollector{name: "tgl", collection: Collection{Items: []source.SourceItem{known, item("tgl", "new", now)}, PagesRead: 2, Complete: true}}
+	zk := &fakeCollector{name: "zakupki", collection: Collection{Items: []source.SourceItem{item("zakupki", "new", now)}, PagesRead: 3, Complete: true}}
+	processor := &fakeProcessor{}
+	runner := Runner{Store: store, Processor: processor, Collectors: []Collector{tgl, zk}, Now: func() time.Time { return now }}
+	summary, err := runner.Preflight(context.Background())
+	if err != nil || summary.Status != "SUCCESS" || summary.Sources["tgl"].New != 1 || summary.Sources["tgl"].Known != 1 || summary.Sources["zakupki"].New != 1 || summary.Sources["zakupki"].Retryable != 1 || summary.Pipeline.Processable != 3 {
+		t.Fatalf("summary=%+v err=%v", summary, err)
+	}
+	if store.upserts != 0 || store.starts != 0 || store.finishes != 0 || len(processor.calls) != 0 || len(store.advanced) != 0 {
+		t.Fatalf("preflight wrote or processed: upserts=%d starts=%d finishes=%d calls=%v checkpoints=%v", store.upserts, store.starts, store.finishes, processor.calls, store.advanced)
+	}
+	if !tgl.windows[0].From.Equal(now.Add(-DefaultBootstrapLookback)) || !zk.windows[0].To.Equal(now) {
+		t.Fatalf("windows tgl=%+v zak=%+v", tgl.windows, zk.windows)
 	}
 }
