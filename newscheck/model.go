@@ -79,6 +79,7 @@ type PipelineSummary struct {
 type Summary struct {
 	RunID      string                   `json:"run_id"`
 	Status     string                   `json:"status"`
+	RunStatus  string                   `json:"run_status,omitempty"`
 	StartedAt  time.Time                `json:"started_at"`
 	FinishedAt time.Time                `json:"finished_at"`
 	Config     ConfigSummary            `json:"config"`
@@ -91,6 +92,7 @@ type ConfigSummary struct {
 	OverlapSeconds           int64  `json:"overlap_seconds"`
 	BootstrapLookbackSeconds int64  `json:"bootstrap_lookback_seconds"`
 	MaxPages                 int    `json:"max_pages"`
+	DiscoveryTimeoutSeconds  int64  `json:"discovery_timeout_seconds"`
 	ProcessingOrder          string `json:"processing_order"`
 	Model                    string `json:"model,omitempty"`
 	Provider                 string `json:"provider,omitempty"`
@@ -102,6 +104,7 @@ type Config struct {
 	MaxPages          int
 	Model             string
 	Provider          string
+	DiscoveryTimeout  time.Duration
 }
 
 func (c Config) withDefaults() Config {

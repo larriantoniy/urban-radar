@@ -78,6 +78,14 @@ unsupported. A successful Evidence Pack consumes the single semantic round,
 while a failed technical attempt does not. A second Editor `RESEARCH` decision
 ends as `RESEARCH_EXHAUSTED` without another Research call.
 
+Runtime Discovery has its own per-SourceItem execution contract, separate
+from the preserved historical batch Discovery eval contract: one SourceItem
+returns either `DROP` or one `CANDIDATE`, never a candidates array. Each full
+Discovery/Hermes invocation has a configurable 90-second default timeout;
+timeout is a retryable `ERROR` at the Discovery stage, not an editorial drop.
+News-check run records end as `COMPLETED`, `INTERRUPTED`, or `FAILED`; an item
+error alone does not make the whole collection run failed.
+
 `PUBLISH` becomes terminal `READY_TO_PUBLISH`. It does not mean `PUBLISHED`,
 and this command performs no publication. `UPDATE_PROJECT` becomes terminal
 `PROJECT_ACTION`; no project store is claimed to have been updated.

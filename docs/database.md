@@ -12,6 +12,7 @@ Migration:
 migrations/001_source_items.sql
 migrations/002_incremental_news_runtime.sql
 migrations/003_selective_source_materialization.sql
+migrations/004_news_check_run_lifecycle.sql
 ```
 
 The application-level persistence ports live beside `runtime/` and
@@ -29,6 +30,7 @@ tooling before the first run, for example:
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001_source_items.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/002_incremental_news_runtime.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/003_selective_source_materialization.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/004_news_check_run_lifecycle.sql
 ```
 
 `storage.OpenPostgres` owns connection setup (including a startup ping), and

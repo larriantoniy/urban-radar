@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"urban-radar/newscheck"
 	urruntime "urban-radar/runtime"
 	"urban-radar/source"
 )
@@ -70,5 +71,37 @@ func TestPostgresSelectiveMaterializationContract(t *testing.T) {
 	}
 	if stored.SourceFingerprint != urruntime.SourceItemSemanticHash(updated) {
 		t.Fatalf("overlap did not retain the latest source revision marker: %q", stored.SourceFingerprint)
+	}
+}
+
+func TestPostgresStoreFinalizesNewsCheckLifecycle(t *testing.T) {
+	url := os.Getenv("URBAN_RADAR_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("URBAN_RADAR_TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	db, err := OpenPostgres(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := NewPostgresStore(db)
+	started := time.Date(2026, 9, 5, 10, 0, 0, 0, time.UTC)
+	runID := "storage-test-interrupted-lifecycle"
+	defer db.ExecContext(ctx, `DELETE FROM news_check_runs WHERE run_id=$1`, runID)
+	if err := store.StartNewsCheck(ctx, runID, started); err != nil {
+		t.Fatal(err)
+	}
+	summary := newscheck.Summary{RunID: runID, Status: "PARTIAL", RunStatus: "INTERRUPTED", StartedAt: started, FinishedAt: started.Add(time.Second)}
+	if err := store.FinishNewsCheck(ctx, summary); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	var finished time.Time
+	if err := db.QueryRowContext(ctx, `SELECT status, finished_at FROM news_check_runs WHERE run_id=$1`, runID).Scan(&status, &finished); err != nil {
+		t.Fatal(err)
+	}
+	if status != "INTERRUPTED" || !finished.Equal(summary.FinishedAt) {
+		t.Fatalf("status=%q finished=%s", status, finished)
 	}
 }

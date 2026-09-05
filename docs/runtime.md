@@ -18,6 +18,26 @@ checkpoint advancement, deterministic batch ordering and summaries.
 Neither source adapter knows about agents, and the coordinator knows nothing
 about CLI or a future Telegram adapter.
 
+## Per-item Discovery execution
+
+The historical Discovery evaluation prompt remains a batch contract. Runtime
+uses `agents/discovery/prompt-runtime-v0.md` instead: it receives one already
+normalized SourceItem and returns exactly one of:
+
+```json
+{"outcome":"DROP"}
+```
+
+or a single `CANDIDATE` object. The runtime decoder rejects unknown fields,
+multiple-candidate batch shapes, a candidate on `DROP`, and a missing candidate
+on `CANDIDATE`. This changes execution shape only; the high-recall relevance
+policy remains the same.
+
+Each Discovery invocation has an end-to-end 90-second default timeout,
+configurable with `--discovery-timeout`. Timeout cancels the Hermes process and
+becomes retryable `ERROR` with `retry_stage=DISCOVERY`; it is never retried in
+the same news check.
+
 ## Collection and deduplication
 
 All stored timestamps are absolute instants. Source query boundaries are
@@ -91,6 +111,43 @@ Non-terminal work is reused only while policy and input hashes match.
 One PostgreSQL advisory lock prevents overlapping `news check` commands from
 burning tokens against the same database. This is a single-runtime guard, not
 a distributed workflow system.
+
+## Run lifecycle
+
+`news_check_runs` begins as `RUNNING` and is finalized even when the CLI
+context receives SIGINT or SIGTERM:
+
+- `COMPLETED`: normal completed batch, including item-level retryable errors;
+- `INTERRUPTED`: SIGINT, SIGTERM, or cancelled runtime context;
+- `FAILED`: a whole-run failure such as no successful source collection or a
+  fatal runtime-store error.
+
+Every terminal run stores `finished_at` and its current structured summary.
+Source checkpoints already advanced by a completed collection are not rolled
+back on later interruption.
+
+## Validated V0 runtime baseline
+
+On 2026-09-05, the first live run
+`20260905T084906.673212000Z` was interrupted. It exposed an execution-contract
+bug: a one-item runtime invocation used the historical batch `candidates[]`
+shape, producing 35 Discovery errors (32 were `expected at most one candidate`)
+and one hung Hermes invocation. The historical run remains preserved as
+`RUNNING` evidence of that failure.
+
+Regression run `20260905T102253.966491000Z` then completed in 449.12 seconds:
+
+- 71 processable SourceItems completed, with none remaining;
+- Discovery: 71 attempts, 66 `DROP`, 5 `CANDIDATE`, and zero technical,
+  schema, JSON, or timeout errors;
+- Editor: four `PUBLISH` decisions (`READY_TO_PUBLISH`) and one `IGNORE`;
+- 32 former batch-shape errors became 29 `DROP` and three
+  `CANDIDATE` → `READY_TO_PUBLISH`, with zero errors.
+
+This validates V0 for observed daily Discovery/Editor runtime operation. It
+does **not** authorize autonomous publishing: `READY_TO_PUBLISH` remains a
+human-in-the-loop editorial candidate. The next evaluation stage is daily
+human-reviewed editorial evaluation, not automated publication.
 
 ## Running
 

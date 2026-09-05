@@ -6,7 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"urban-radar/newscheck"
@@ -55,6 +57,7 @@ func checkNews(args []string) {
 	overlap := flags.Duration("overlap", newscheck.DefaultOverlap, "checkpoint overlap window")
 	bootstrap := flags.Duration("bootstrap-lookback", newscheck.DefaultBootstrapLookback, "first-run collection window")
 	maxPages := flags.Int("max-pages", newscheck.DefaultMaxPages, "per-source pagination safety bound")
+	discoveryTimeout := flags.Duration("discovery-timeout", urruntime.DefaultDiscoveryTimeout, "end-to-end timeout for one Discovery invocation")
 	preflight := flags.Bool("preflight", false, "collect and inspect without writing state or invoking agents")
 	model := flags.String("model", "deepseek/deepseek-v4-flash-0731", "Hermes model")
 	provider := flags.String("provider", "openrouter", "Hermes provider")
@@ -62,10 +65,11 @@ func checkNews(args []string) {
 	if err := flags.Parse(args); err != nil {
 		fail(err.Error())
 	}
-	if *overlap <= 0 || *bootstrap <= 0 || *maxPages <= 0 {
-		fail("overlap, bootstrap-lookback and max-pages must be positive")
+	if *overlap <= 0 || *bootstrap <= 0 || *maxPages <= 0 || *discoveryTimeout <= 0 {
+		fail("overlap, bootstrap-lookback, max-pages and discovery-timeout must be positive")
 	}
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	databaseURL, err := storage.DatabaseURLFromEnv()
 	if err != nil {
 		fail("news check requires persistent PostgreSQL: " + err.Error())
@@ -87,7 +91,7 @@ func checkNews(args []string) {
 			newscheck.TGLCollector{Client: tgl.NewClient(15 * time.Second)},
 			newscheck.ZakupkiCollector{Search: zakupki.NewZakupkiSearchHTMLSource(zakupkiHTTP), CardFetcher: zakupki.HTTPCardFetcher{Client: zakupkiHTTP}},
 		},
-		Config: newscheck.Config{Overlap: *overlap, BootstrapLookback: *bootstrap, MaxPages: *maxPages, Model: *model, Provider: *provider},
+		Config: newscheck.Config{Overlap: *overlap, BootstrapLookback: *bootstrap, MaxPages: *maxPages, Model: *model, Provider: *provider, DiscoveryTimeout: *discoveryTimeout},
 	}
 	if *preflight {
 		summary, err := runner.Preflight(ctx)
@@ -102,6 +106,7 @@ func checkNews(args []string) {
 	if err != nil {
 		fail("load agent policies: " + err.Error())
 	}
+	agents.DiscoveryTimeout = *discoveryTimeout
 	runner.Processor = &urruntime.Coordinator{
 		Store: stateStore, Agents: agents, Policies: agents.Policies(),
 		ResearchSupportedSources: map[string]bool{zakupki.SourceName: true},

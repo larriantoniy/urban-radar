@@ -6,30 +6,36 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"urban-radar/source"
 )
 
 type HermesExecutor struct {
-	Command         string
-	Model           string
-	Provider        string
-	DiscoveryPrompt []byte
-	EditorPrompt    []byte
-	ResearchPrompt  []byte
-	policies        Policies
+	Command          string
+	Model            string
+	Provider         string
+	DiscoveryTimeout time.Duration
+	DiscoveryPrompt  []byte
+	EditorPrompt     []byte
+	ResearchPrompt   []byte
+	policies         Policies
 }
+
+const DefaultDiscoveryTimeout = 90 * time.Second
 
 func NewHermesExecutor(repositoryRoot, model, provider string) (*HermesExecutor, error) {
 	read := func(name string) ([]byte, error) {
 		return os.ReadFile(filepath.Join(repositoryRoot, name))
 	}
-	discovery, err := read("agents/discovery/prompt.md")
+	discovery, err := read("agents/discovery/prompt-runtime-v0.md")
 	if err != nil {
 		return nil, err
 	}
@@ -41,8 +47,8 @@ func NewHermesExecutor(repositoryRoot, model, provider string) (*HermesExecutor,
 	if err != nil {
 		return nil, err
 	}
-	e := &HermesExecutor{Command: "hermes", Model: model, Provider: provider, DiscoveryPrompt: discovery, EditorPrompt: editor, ResearchPrompt: research}
-	e.policies = Policies{Discovery: "discovery:" + digest(discovery), Editor: "editor-v1:" + digest(editor), Research: "research-v0.2:" + digest(research)}
+	e := &HermesExecutor{Command: "hermes", Model: model, Provider: provider, DiscoveryTimeout: DefaultDiscoveryTimeout, DiscoveryPrompt: discovery, EditorPrompt: editor, ResearchPrompt: research}
+	e.policies = Policies{Discovery: "discovery-runtime-v0:" + digest(discovery), Editor: "editor-v1:" + digest(editor), Research: "research-v0.2:" + digest(research)}
 	return e, nil
 }
 
@@ -51,29 +57,72 @@ func (e *HermesExecutor) Policies() Policies { return e.policies }
 func (e *HermesExecutor) Discover(ctx context.Context, item source.SourceItem) (DiscoveryOutcome, Usage, error) {
 	payload, _ := json.Marshal(item)
 	prompt := string(e.DiscoveryPrompt) + "\n\nRUNTIME SOURCE ITEM\nUse only this complete factual SourceItem. Do not call source tools.\n\n" + string(payload)
-	raw, usage, err := e.run(ctx, prompt, "")
+	timeout := e.discoveryTimeout()
+	invocationCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	raw, usage, err := e.run(invocationCtx, prompt, "")
+	if errors.Is(invocationCtx.Err(), context.DeadlineExceeded) {
+		return DiscoveryOutcome{}, usage, fmt.Errorf("Discovery invocation timeout after %s", timeout)
+	}
 	if err != nil {
 		return DiscoveryOutcome{}, usage, err
 	}
-	var envelope struct {
-		Candidates []struct {
-			SourceURL string `json:"source_url"`
-		} `json:"candidates"`
-	}
-	if err := json.Unmarshal(raw, &envelope); err != nil {
-		return DiscoveryOutcome{}, usage, fmt.Errorf("Discovery schema: %w", err)
-	}
-	candidate := false
-	if len(envelope.Candidates) > 1 {
-		return DiscoveryOutcome{}, usage, fmt.Errorf("Discovery schema: expected at most one candidate")
-	}
-	for _, value := range envelope.Candidates {
-		if value.SourceURL != item.URL {
-			return DiscoveryOutcome{}, usage, fmt.Errorf("Discovery schema: candidate source_url does not match input")
-		}
-		candidate = true
+	candidate, err := decodeRuntimeDiscovery(raw, item.URL)
+	if err != nil {
+		return DiscoveryOutcome{}, usage, err
 	}
 	return DiscoveryOutcome{Candidate: candidate, Output: raw}, usage, nil
+}
+
+type runtimeDiscoveryCandidate struct {
+	Title                  string `json:"title"`
+	PublishedAt            string `json:"published_at"`
+	SourceURL              string `json:"source_url"`
+	EventTypeGuess         string `json:"event_type_guess"`
+	Summary                string `json:"summary"`
+	WhyPotentiallyRelevant string `json:"why_potentially_relevant"`
+	Uncertainty            string `json:"uncertainty"`
+}
+
+type runtimeDiscoveryEnvelope struct {
+	Outcome   string                     `json:"outcome"`
+	Candidate *runtimeDiscoveryCandidate `json:"candidate,omitempty"`
+}
+
+func decodeRuntimeDiscovery(raw json.RawMessage, sourceURL string) (bool, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var envelope runtimeDiscoveryEnvelope
+	if err := decoder.Decode(&envelope); err != nil {
+		return false, fmt.Errorf("Discovery schema: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return false, fmt.Errorf("Discovery schema: trailing JSON value")
+	}
+	switch envelope.Outcome {
+	case "DROP":
+		if envelope.Candidate != nil {
+			return false, fmt.Errorf("Discovery schema: DROP must not contain candidate")
+		}
+		return false, nil
+	case "CANDIDATE":
+		if envelope.Candidate == nil {
+			return false, fmt.Errorf("Discovery schema: CANDIDATE requires candidate")
+		}
+		if envelope.Candidate.SourceURL != sourceURL {
+			return false, fmt.Errorf("Discovery schema: candidate source_url does not match input")
+		}
+		return true, nil
+	default:
+		return false, fmt.Errorf("Discovery schema: invalid outcome %q", envelope.Outcome)
+	}
+}
+
+func (e *HermesExecutor) discoveryTimeout() time.Duration {
+	if e.DiscoveryTimeout > 0 {
+		return e.DiscoveryTimeout
+	}
+	return DefaultDiscoveryTimeout
 }
 
 func (e *HermesExecutor) Edit(ctx context.Context, item source.SourceItem, discovery, evidence json.RawMessage) (EditorOutcome, Usage, error) {

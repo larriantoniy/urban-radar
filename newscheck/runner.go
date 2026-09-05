@@ -19,10 +19,10 @@ type Runner struct {
 	Now        func() time.Time
 }
 
-func (r *Runner) CheckNews(ctx context.Context) (Summary, error) {
+func (r *Runner) CheckNews(ctx context.Context) (summary Summary, runErr error) {
 	started := r.now()
 	config := r.Config.withDefaults()
-	summary := r.newSummary(started, config)
+	summary = r.newSummary(started, config)
 	release, err := r.Store.AcquireNewsCheck(ctx)
 	if err != nil {
 		return summary, err
@@ -31,9 +31,26 @@ func (r *Runner) CheckNews(ctx context.Context) (Summary, error) {
 	if err := r.Store.StartNewsCheck(ctx, summary.RunID, started); err != nil {
 		return summary, err
 	}
+	defer func() {
+		summary.FinishedAt = r.now()
+		switch {
+		case errors.Is(ctx.Err(), context.Canceled), errors.Is(ctx.Err(), context.DeadlineExceeded):
+			summary.RunStatus = "INTERRUPTED"
+		case runErr != nil || summary.Status == "FAILED":
+			summary.RunStatus = "FAILED"
+		default:
+			summary.RunStatus = "COMPLETED"
+		}
+		if err := r.Store.FinishNewsCheck(context.Background(), summary); err != nil && runErr == nil {
+			runErr = fmt.Errorf("finish news check: %w", err)
+		}
+	}()
 
 	sourceSuccesses := 0
 	for _, collector := range r.Collectors {
+		if err := ctx.Err(); err != nil {
+			return summary, err
+		}
 		name := collector.Name()
 		collection, sourceSummary, collectErr := r.collectSource(ctx, collector, started, config)
 		if sourceSummary.Status == "ERROR" && collection.Items == nil {
@@ -42,6 +59,9 @@ func (r *Runner) CheckNews(ctx context.Context) (Summary, error) {
 		}
 		seen := make(map[string]struct{})
 		for _, item := range collection.Items {
+			if err := ctx.Err(); err != nil {
+				return summary, err
+			}
 			key := itemKey(item)
 			if _, duplicate := seen[key]; duplicate {
 				continue
@@ -81,8 +101,6 @@ func (r *Runner) CheckNews(ctx context.Context) (Summary, error) {
 			summary.Status = "PARTIAL"
 		}
 		summary.Pipeline.Errors = 1
-		summary.FinishedAt = r.now()
-		_ = r.Store.FinishNewsCheck(ctx, summary)
 		return summary, err
 	}
 	sort.SliceStable(processable, func(i, j int) bool {
@@ -97,6 +115,9 @@ func (r *Runner) CheckNews(ctx context.Context) (Summary, error) {
 	})
 	summary.Pipeline.Processable = len(processable)
 	for _, record := range processable {
+		if err := ctx.Err(); err != nil {
+			return summary, err
+		}
 		if record.State == urruntime.StateError {
 			s := summary.Sources[record.Item.Source]
 			s.Retryable++
@@ -130,10 +151,6 @@ func (r *Runner) CheckNews(ctx context.Context) (Summary, error) {
 		summary.Status = "PARTIAL"
 	} else {
 		summary.Status = "SUCCESS"
-	}
-	summary.FinishedAt = r.now()
-	if err := r.Store.FinishNewsCheck(ctx, summary); err != nil {
-		return summary, err
 	}
 	return summary, nil
 }
@@ -236,7 +253,7 @@ func (r *Runner) newSummary(started time.Time, config Config) Summary {
 		Config: ConfigSummary{
 			OverlapSeconds: int64(config.Overlap.Seconds()), BootstrapLookbackSeconds: int64(config.BootstrapLookback.Seconds()),
 			MaxPages: config.MaxPages, ProcessingOrder: "published_at ASC, source ASC, source_item_id ASC",
-			Model: config.Model, Provider: config.Provider,
+			Model: config.Model, Provider: config.Provider, DiscoveryTimeoutSeconds: int64(config.DiscoveryTimeout.Seconds()),
 		},
 		Sources: make(map[string]SourceSummary),
 	}

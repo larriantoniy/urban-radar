@@ -195,6 +195,15 @@ func TestCoordinatorErrorsAreRetryableAndDoNotConsumeResearchRound(t *testing.T)
 	}
 }
 
+func TestCoordinatorDiscoveryTimeoutIsRetryableWithoutAutomaticRetry(t *testing.T) {
+	store := &memoryStore{record: testRecord("tgl")}
+	agents := &fakeAgents{discoveryErr: errors.New("Discovery invocation timeout after 90s")}
+	got := coordinator(store, agents).Process(context.Background(), store.record.Item)
+	if got.State != StateError || store.record.RetryStage != StateDiscovery || agents.discoveryCalls != 1 || store.record.ResearchRounds != 0 {
+		t.Fatalf("result=%+v record=%+v calls=%d", got, store.record, agents.discoveryCalls)
+	}
+}
+
 func TestCoordinatorResumesPersistedPendingDiscovery(t *testing.T) {
 	record := testRecord("tgl")
 	record.Item.Text = "persisted pending source payload"

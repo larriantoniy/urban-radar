@@ -154,7 +154,14 @@ func (r *PostgresStore) FinishNewsCheck(ctx context.Context, summary newscheck.S
 	if err != nil {
 		return err
 	}
-	_, err = r.db.ExecContext(ctx, `UPDATE news_check_runs SET finished_at=$2,status=$3,summary=$4 WHERE run_id=$1`, summary.RunID, summary.FinishedAt, summary.Status, data)
+	runStatus := summary.RunStatus
+	if runStatus == "" {
+		runStatus = "COMPLETED"
+		if summary.Status == "FAILED" {
+			runStatus = "FAILED"
+		}
+	}
+	_, err = r.db.ExecContext(ctx, `UPDATE news_check_runs SET finished_at=$2,status=$3,summary=$4 WHERE run_id=$1`, summary.RunID, summary.FinishedAt, runStatus, data)
 	return err
 }
 

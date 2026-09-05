@@ -145,6 +145,17 @@ type fakeProcessor struct {
 	results map[string]urruntime.ProcessResult
 }
 
+type cancelingProcessor struct {
+	cancel context.CancelFunc
+	calls  int
+}
+
+func (p *cancelingProcessor) Process(_ context.Context, item source.SourceItem) urruntime.ProcessResult {
+	p.calls++
+	p.cancel()
+	return urruntime.ProcessResult{Source: item.Source, SourceItemID: item.SourceItemID, State: urruntime.StateError, Error: "interrupted"}
+}
+
 func (p *fakeProcessor) Process(_ context.Context, item source.SourceItem) urruntime.ProcessResult {
 	p.calls = append(p.calls, key(item))
 	if result, ok := p.results[key(item)]; ok {
@@ -184,6 +195,34 @@ func TestRunnerWindowsOverlapAndCheckpointIsolation(t *testing.T) {
 	}
 	if !store.checkpoints["tgl"].Equal(checkpoint) || !store.checkpoints["zakupki"].Equal(now) {
 		t.Fatalf("checkpoints=%v", store.checkpoints)
+	}
+}
+
+func TestSuccessfulRunHasCompletedLifecycle(t *testing.T) {
+	now := time.Date(2026, 9, 4, 9, 0, 0, 0, time.UTC)
+	store := newFakeStore()
+	runner := Runner{
+		Store: store, Processor: &fakeProcessor{}, Now: func() time.Time { return now },
+		Collectors: []Collector{&fakeCollector{name: "tgl", collection: Collection{Complete: true}}},
+	}
+	summary, err := runner.CheckNews(context.Background())
+	if err != nil || summary.RunStatus != "COMPLETED" || summary.FinishedAt.IsZero() || len(store.summaries) != 1 || store.summaries[0].RunStatus != "COMPLETED" {
+		t.Fatalf("summary=%+v saved=%+v err=%v", summary, store.summaries, err)
+	}
+}
+
+func TestInterruptedRunIsFinalized(t *testing.T) {
+	now := time.Date(2026, 9, 4, 9, 0, 0, 0, time.UTC)
+	store := newFakeStore()
+	ctx, cancel := context.WithCancel(context.Background())
+	processor := &cancelingProcessor{cancel: cancel}
+	runner := Runner{
+		Store: store, Processor: processor, Now: func() time.Time { return now },
+		Collectors: []Collector{&fakeCollector{name: "tgl", collection: Collection{Items: []source.SourceItem{item("tgl", "A", now), item("tgl", "B", now)}, Complete: true}}},
+	}
+	summary, err := runner.CheckNews(ctx)
+	if !errors.Is(err, context.Canceled) || summary.RunStatus != "INTERRUPTED" || summary.FinishedAt.IsZero() || len(store.summaries) != 1 || store.summaries[0].RunStatus != "INTERRUPTED" || processor.calls != 1 {
+		t.Fatalf("summary=%+v saved=%+v calls=%d err=%v", summary, store.summaries, processor.calls, err)
 	}
 }
 
@@ -245,7 +284,7 @@ func TestProcessingOrderAndFailureIsolation(t *testing.T) {
 	runner := Runner{Store: store, Processor: processor, Collectors: []Collector{collector}, Now: func() time.Time { return now }}
 	summary, err := runner.CheckNews(context.Background())
 	want := []string{"zakupki/C", "tgl/A", "tgl/B"}
-	if err != nil || summary.Status != "PARTIAL" || summary.Pipeline.Errors != 1 || !reflect.DeepEqual(processor.calls, want) {
+	if err != nil || summary.Status != "PARTIAL" || summary.RunStatus != "COMPLETED" || summary.Pipeline.Errors != 1 || !reflect.DeepEqual(processor.calls, want) {
 		t.Fatalf("summary=%+v calls=%v err=%v", summary, processor.calls, err)
 	}
 }
@@ -281,7 +320,11 @@ func TestRunnerSourceFailureStatus(t *testing.T) {
 				},
 			}
 			summary, err := runner.CheckNews(context.Background())
-			if err != nil || summary.Status != tt.want || store.advanced["tgl"]+store.advanced["zakupki"] != tt.advancing {
+			wantRun := "COMPLETED"
+			if tt.want == "FAILED" {
+				wantRun = "FAILED"
+			}
+			if err != nil || summary.Status != tt.want || summary.RunStatus != wantRun || store.advanced["tgl"]+store.advanced["zakupki"] != tt.advancing {
 				t.Fatalf("summary=%+v advanced=%v err=%v", summary, store.advanced, err)
 			}
 		})
