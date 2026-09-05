@@ -63,19 +63,24 @@ type StageResult struct {
 }
 
 type ItemRecord struct {
-	Item           source.SourceItem `json:"item"`
-	FirstSeenAt    time.Time         `json:"first_seen_at"`
-	LastSeenAt     time.Time         `json:"last_seen_at"`
-	State          State             `json:"state"`
-	RetryStage     State             `json:"retry_stage,omitempty"`
-	ResearchRounds int               `json:"research_rounds"`
-	LastError      string            `json:"last_error,omitempty"`
-	Discovery      *StageResult      `json:"discovery,omitempty"`
-	Editor         *StageResult      `json:"editor,omitempty"`
-	Research       *StageResult      `json:"research,omitempty"`
-	EditorReeval   *StageResult      `json:"editor_reevaluation,omitempty"`
-	Usage          Usage             `json:"usage"`
-	UpdatedAt      time.Time         `json:"updated_at"`
+	Item source.SourceItem `json:"item"`
+	// SourceFingerprint records the most recently observed canonical source
+	// payload. A terminal item is never automatically reopened in Runtime V0,
+	// but this makes a later source-side change visible without retaining a
+	// dropped item's heavy payload.
+	SourceFingerprint string       `json:"source_fingerprint,omitempty"`
+	FirstSeenAt       time.Time    `json:"first_seen_at"`
+	LastSeenAt        time.Time    `json:"last_seen_at"`
+	State             State        `json:"state"`
+	RetryStage        State        `json:"retry_stage,omitempty"`
+	ResearchRounds    int          `json:"research_rounds"`
+	LastError         string       `json:"last_error,omitempty"`
+	Discovery         *StageResult `json:"discovery,omitempty"`
+	Editor            *StageResult `json:"editor,omitempty"`
+	Research          *StageResult `json:"research,omitempty"`
+	EditorReeval      *StageResult `json:"editor_reevaluation,omitempty"`
+	Usage             Usage        `json:"usage"`
+	UpdatedAt         time.Time    `json:"updated_at"`
 }
 
 type Store interface {

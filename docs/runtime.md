@@ -30,8 +30,16 @@ converted explicitly to Europe/Samara calendar dates by the adapters.
 - A source checkpoint advances to the run start only after its complete
   collection pass. One source may advance while the other fails.
 - An overlap may return old rows; `(source, source_item_id)` deduplicates them.
-- Re-seen rows refresh mutable source fields and `last_seen_at`, while keeping
-  first-seen time, pipeline history, decisions, evidence and usage.
+- Every fetched source identity is retained. Pending and retryable rows keep a
+  full SourceItem so a later resume never requires another source fetch.
+  After a successful non-candidate Discovery result, `DISCOVERY_DROPPED`
+  retains identity, URL/title, timestamps, compact Discovery provenance and a
+  source fingerprint, but clears the heavy summary, body text and metadata.
+  A repeated overlap refreshes `last_seen_at` and the fingerprint without
+  re-materializing that payload or invoking Discovery again.
+- Re-seen non-dropped rows refresh mutable source fields and `last_seen_at`,
+  while keeping first-seen time, pipeline history, decisions, evidence and
+  usage.
 - A material source-content change does not automatically reopen a terminal
   item in V0. Deliberate reprocessing after a policy/content change remains an
   explicit operator action.
@@ -86,7 +94,7 @@ a distributed workflow system.
 
 ## Running
 
-Configure PostgreSQL and apply both migrations documented in
+Configure PostgreSQL and apply all migrations documented in
 [`database.md`](database.md). Configure the source-backed Hermes MCP entries
 from `hermes/tgl-mcp.example.yaml`, `ZAKUPKI_SEARCH_URL`, and when required the
 external `ZAKUPKI_CA_FILE`. Then run:

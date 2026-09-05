@@ -231,6 +231,13 @@ func semanticItem(item source.SourceItem) any {
 	}{item.Source, item.SourceItemID, item.URL, item.Title, item.Summary, item.Text, item.PublishedAt, item.Metadata}
 }
 
+// SourceItemSemanticHash identifies the stable factual input supplied by a
+// source adapter. RetrievedAt is deliberately excluded: seeing the same
+// source record in an overlap window must not create a new semantic revision.
+func SourceItemSemanticHash(item source.SourceItem) string {
+	return hashJSON(semanticItem(item))
+}
+
 func (c *Coordinator) fail(ctx context.Context, record *ItemRecord, retry State, err error) {
 	record.State, record.RetryStage, record.LastError = StateError, retry, err.Error()
 	c.save(ctx, record)

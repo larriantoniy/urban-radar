@@ -62,9 +62,59 @@ func (s *fakeStore) UpsertSeen(_ context.Context, item source.SourceItem, now ti
 	if !exists {
 		record = urruntime.ItemRecord{Item: item, State: urruntime.StateReceived, FirstSeenAt: now}
 	}
-	record.Item, record.LastSeenAt = item, now
+	if record.State == urruntime.StateDiscoveryDropped {
+		// Match PostgresStore: overlap observations refresh cheap audit fields
+		// but never re-materialize a terminal dropped payload.
+		record.Item.URL, record.Item.Title, record.Item.PublishedAt, record.Item.RetrievedAt = item.URL, item.Title, item.PublishedAt, item.RetrievedAt
+	} else {
+		record.Item = item
+	}
+	record.LastSeenAt = now
 	s.items[k] = record
 	return record, !exists, nil
+}
+
+func TestKnownDiscoveryDropOverlapDoesNotRematerializeOrInvokeProcessor(t *testing.T) {
+	now := time.Date(2026, 9, 4, 9, 0, 0, 0, time.UTC)
+	store := newFakeStore()
+	a := item("tgl", "dropped", now)
+	store.items[key(a)] = urruntime.ItemRecord{
+		Item:  source.SourceItem{Source: a.Source, SourceItemID: a.SourceItemID, URL: a.URL, Title: a.Title, PublishedAt: a.PublishedAt},
+		State: urruntime.StateDiscoveryDropped, FirstSeenAt: now.Add(-time.Hour), LastSeenAt: now.Add(-time.Hour),
+	}
+	seenAgain := a
+	seenAgain.Summary, seenAgain.Text = "large summary", "large payload"
+	seenAgain.Metadata = map[string]any{"large": "payload"}
+	collector := &fakeCollector{name: "tgl", collection: Collection{Items: []source.SourceItem{seenAgain}, Complete: true}}
+	processor := &fakeProcessor{}
+	runner := Runner{Store: store, Processor: processor, Collectors: []Collector{collector}, Now: func() time.Time { return now }}
+	if _, err := runner.CheckNews(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := store.items[key(a)]
+	if got.Item.Text != "" || got.Item.Summary != "" || len(got.Item.Metadata) != 0 {
+		t.Fatalf("known DROP was re-materialized: %+v", got.Item)
+	}
+	if !got.LastSeenAt.Equal(now) || len(processor.calls) != 0 {
+		t.Fatalf("last_seen=%s processor calls=%v", got.LastSeenAt, processor.calls)
+	}
+}
+
+func TestDeferredReceivedItemKeepsPayloadWithoutSourceRefetch(t *testing.T) {
+	now := time.Date(2026, 9, 4, 9, 0, 0, 0, time.UTC)
+	store := newFakeStore()
+	deferred := item("tgl", "deferred", now.Add(-time.Hour))
+	deferred.Text = "full payload retained while discovery is pending"
+	store.items[key(deferred)] = urruntime.ItemRecord{Item: deferred, State: urruntime.StateReceived, FirstSeenAt: now.Add(-time.Hour), LastSeenAt: now.Add(-time.Hour)}
+	collector := &fakeCollector{name: "tgl", collection: Collection{Complete: true}}
+	processor := &fakeProcessor{}
+	runner := Runner{Store: store, Processor: processor, Collectors: []Collector{collector}, Now: func() time.Time { return now }}
+	if _, err := runner.CheckNews(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(processor.calls, []string{key(deferred)}) || store.items[key(deferred)].Item.Text != deferred.Text {
+		t.Fatalf("deferred payload/calls=%+v %q", processor.calls, store.items[key(deferred)].Item.Text)
+	}
 }
 func (s *fakeStore) ListProcessable(context.Context) ([]urruntime.ItemRecord, error) {
 	var out []urruntime.ItemRecord

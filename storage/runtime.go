@@ -38,20 +38,24 @@ func (r *PostgresStore) UpsertSeen(ctx context.Context, item source.SourceItem, 
 	if err != nil {
 		return urruntime.ItemRecord{}, false, err
 	}
+	fingerprint := urruntime.SourceItemSemanticHash(item)
 	row := r.db.QueryRowContext(ctx, `INSERT INTO source_items
 (source,source_item_id,source_url,title,summary,body_text,published_at_source,retrieved_at,
- first_seen_at,last_seen_at,processing_state,metadata)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,'RECEIVED',$10)
+ first_seen_at,last_seen_at,processing_state,metadata,source_fingerprint)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,'RECEIVED',$10,$11)
 ON CONFLICT (source,source_item_id) DO UPDATE SET
- source_url=EXCLUDED.source_url,title=EXCLUDED.title,summary=EXCLUDED.summary,
- body_text=EXCLUDED.body_text,published_at_source=EXCLUDED.published_at_source,
+ source_url=EXCLUDED.source_url,title=EXCLUDED.title,
+ summary=CASE WHEN source_items.processing_state='DISCOVERY_DROPPED' THEN source_items.summary ELSE EXCLUDED.summary END,
+ body_text=CASE WHEN source_items.processing_state='DISCOVERY_DROPPED' THEN source_items.body_text ELSE EXCLUDED.body_text END,
+ metadata=CASE WHEN source_items.processing_state='DISCOVERY_DROPPED' THEN source_items.metadata ELSE EXCLUDED.metadata END,
+ published_at_source=EXCLUDED.published_at_source,
  retrieved_at=EXCLUDED.retrieved_at,last_seen_at=EXCLUDED.last_seen_at,
- metadata=EXCLUDED.metadata,updated_at=now()
+ source_fingerprint=EXCLUDED.source_fingerprint,updated_at=now()
 RETURNING source,source_item_id,source_url,title,summary,body_text,published_at_source,
  retrieved_at,metadata,first_seen_at,last_seen_at,processing_state,retry_stage,
- research_rounds,last_error,runtime_data,updated_at,(xmax = 0)`,
+ research_rounds,last_error,runtime_data,updated_at,source_fingerprint,(xmax = 0)`,
 		item.Source, item.SourceItemID, item.URL, item.Title, item.Summary, item.Text,
-		nullTime(item.PublishedAt), item.RetrievedAt, seenAt, metadata)
+		nullTime(item.PublishedAt), item.RetrievedAt, seenAt, metadata, fingerprint)
 	record, inserted, err := scanRuntimeWithInserted(row)
 	return record, inserted, err
 }
@@ -62,8 +66,11 @@ func (r *PostgresStore) Save(ctx context.Context, record urruntime.ItemRecord) e
 		return fmt.Errorf("encode runtime state: %w", err)
 	}
 	result, err := r.db.ExecContext(ctx, `UPDATE source_items SET
- processing_state=$3,retry_stage=$4,research_rounds=$5,last_error=$6,
- runtime_data=$7,updated_at=$8
+	processing_state=$3,retry_stage=$4,research_rounds=$5,last_error=$6,
+	runtime_data=$7,updated_at=$8,
+	summary=CASE WHEN $3='DISCOVERY_DROPPED' THEN '' ELSE summary END,
+	body_text=CASE WHEN $3='DISCOVERY_DROPPED' THEN '' ELSE body_text END,
+	metadata=CASE WHEN $3='DISCOVERY_DROPPED' THEN '{}'::jsonb ELSE metadata END
 WHERE source=$1 AND source_item_id=$2`, record.Item.Source, record.Item.SourceItemID,
 		record.State, record.RetryStage, record.ResearchRounds, record.LastError, data, record.UpdatedAt)
 	if err != nil {
@@ -153,7 +160,7 @@ func (r *PostgresStore) FinishNewsCheck(ctx context.Context, summary newscheck.S
 
 const runtimeSelect = `SELECT source,source_item_id,source_url,title,summary,body_text,
 published_at_source,retrieved_at,metadata,first_seen_at,last_seen_at,processing_state,
-retry_stage,research_rounds,last_error,runtime_data,updated_at FROM source_items`
+retry_stage,research_rounds,last_error,runtime_data,updated_at,source_fingerprint FROM source_items`
 
 type rowScanner interface{ Scan(...any) error }
 
@@ -174,7 +181,7 @@ func scanRuntimeValues(row rowScanner, withInserted bool) (urruntime.ItemRecord,
 		&record.Item.Title, &record.Item.Summary, &record.Item.Text, &published,
 		&record.Item.RetrievedAt, &metadata, &record.FirstSeenAt, &record.LastSeenAt,
 		&record.State, &record.RetryStage, &record.ResearchRounds, &record.LastError,
-		&data, &record.UpdatedAt}
+		&data, &record.UpdatedAt, &record.SourceFingerprint}
 	var inserted bool
 	if withInserted {
 		args = append(args, &inserted)

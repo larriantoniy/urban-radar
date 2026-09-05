@@ -62,9 +62,13 @@ Pagination, not an item count, determines completeness; reaching the 100-page
 safety guard makes that source collection incomplete and its checkpoint does
 not advance.
 
-The PostgreSQL identity is `(source, source_item_id)`. Re-seen terminal items
-update source fields and `last_seen_at` but consume no agent calls. Technical
-`ERROR` is retryable and never means `IGNORE`. Successful collection can
+The PostgreSQL identity is `(source, source_item_id)`. Every fetched record is
+remembered. Pending, retryable and candidate records retain a full SourceItem
+for crash-safe resume; a terminal Discovery drop retains only lightweight
+identity/audit data and its Discovery outcome, with summary, body text and
+metadata compacted. Re-seen dropped records update `last_seen_at` without
+restoring that payload or consuming agent calls. Technical `ERROR` is
+retryable and never means `IGNORE`. Successful collection can
 advance its checkpoint even when later per-item processing fails; those items
 remain retryable in storage.
 

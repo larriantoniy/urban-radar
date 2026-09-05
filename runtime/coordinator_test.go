@@ -15,6 +15,13 @@ type memoryStore struct{ record ItemRecord }
 
 func (s *memoryStore) Get(context.Context, string, string) (ItemRecord, error) { return s.record, nil }
 func (s *memoryStore) Save(_ context.Context, record ItemRecord) error {
+	// Mirror the durable store contract: a successful terminal Discovery DROP
+	// keeps identity and compact Discovery provenance, not the heavy payload.
+	if record.State == StateDiscoveryDropped {
+		record.Item.Summary = ""
+		record.Item.Text = ""
+		record.Item.Metadata = map[string]any{}
+	}
 	s.record = record
 	return nil
 }
@@ -28,6 +35,7 @@ type fakeAgents struct {
 	discoveryCalls     int
 	editorCalls        int
 	researchCalls      int
+	editorItems        []source.SourceItem
 }
 
 func (f *fakeAgents) Discover(_ context.Context, item source.SourceItem) (DiscoveryOutcome, Usage, error) {
@@ -45,6 +53,7 @@ func (f *fakeAgents) Discover(_ context.Context, item source.SourceItem) (Discov
 
 func (f *fakeAgents) Edit(_ context.Context, item source.SourceItem, _ json.RawMessage, _ json.RawMessage) (EditorOutcome, Usage, error) {
 	f.editorCalls++
+	f.editorItems = append(f.editorItems, item)
 	if f.editorErr != nil {
 		return EditorOutcome{}, Usage{APICalls: 1}, f.editorErr
 	}
@@ -109,12 +118,67 @@ func TestCoordinatorTerminalTransitions(t *testing.T) {
 	}
 }
 
+func TestCoordinatorDiscoveryDropCompactsPayloadAndPreservesOutcome(t *testing.T) {
+	record := testRecord("tgl")
+	record.Item.Summary = "large summary"
+	record.Item.Text = string(make([]byte, 16*1024))
+	record.Item.Metadata = map[string]any{"large": string(make([]byte, 8*1024))}
+	store := &memoryStore{record: record}
+	agents := &fakeAgents{discoveryCandidate: false}
+	got := coordinator(store, agents).Process(context.Background(), record.Item)
+	if got.State != StateDiscoveryDropped || store.record.Discovery == nil {
+		t.Fatalf("result=%+v record=%+v", got, store.record)
+	}
+	if store.record.Item.Text != "" || store.record.Item.Summary != "" || len(store.record.Item.Metadata) != 0 {
+		t.Fatalf("dropped record retained heavy payload: %+v", store.record.Item)
+	}
+	if store.record.Item.Source != "tgl" || store.record.Item.SourceItemID != "1" || store.record.Item.URL == "" || store.record.Item.Title == "" {
+		t.Fatalf("drop lost durable identity/audit fields: %+v", store.record.Item)
+	}
+}
+
+func TestCoordinatorCandidateKeepsFullPayloadForEditorAndResume(t *testing.T) {
+	record := testRecord("tgl")
+	record.Item.Summary = "summary"
+	record.Item.Text = "full body required by Editor"
+	record.Item.Metadata = map[string]any{"kind": "official"}
+	store := &memoryStore{record: record}
+	agents := &fakeAgents{discoveryCandidate: true, editorDecisions: []string{"PUBLISH"}}
+	got := coordinator(store, agents).Process(context.Background(), record.Item)
+	if got.State != StateReadyToPublish || len(agents.editorItems) != 1 {
+		t.Fatalf("result=%+v editor calls=%d", got, len(agents.editorItems))
+	}
+	if agents.editorItems[0].Text != "full body required by Editor" || store.record.Item.Text != "full body required by Editor" || store.record.Item.Metadata["kind"] != "official" {
+		t.Fatalf("candidate payload was not retained: editor=%+v stored=%+v", agents.editorItems[0], store.record.Item)
+	}
+}
+
+func TestCoordinatorResumesEditorFromPersistedCandidateWithoutSourceRefetch(t *testing.T) {
+	record := testRecord("tgl")
+	record.Item.Text = "persisted candidate body"
+	record.Item.Metadata = map[string]any{"source": "persisted"}
+	record.State = StateEditor
+	record.Discovery = stageResult("discovery", semanticItem(record.Item), json.RawMessage(`{"candidates":[{}]}`), Usage{}, record.UpdatedAt)
+	store := &memoryStore{record: record}
+	agents := &fakeAgents{editorDecisions: []string{"PUBLISH"}}
+	got := coordinator(store, agents).Process(context.Background(), record.Item)
+	if got.State != StateReadyToPublish || agents.discoveryCalls != 0 || len(agents.editorItems) != 1 {
+		t.Fatalf("result=%+v discovery=%d editor=%d", got, agents.discoveryCalls, len(agents.editorItems))
+	}
+	if agents.editorItems[0].Text != "persisted candidate body" || agents.editorItems[0].Metadata["source"] != "persisted" {
+		t.Fatalf("resumed Editor lost candidate payload: %+v", agents.editorItems[0])
+	}
+}
+
 func TestCoordinatorErrorsAreRetryableAndDoNotConsumeResearchRound(t *testing.T) {
 	store := &memoryStore{record: testRecord("tgl")}
 	agents := &fakeAgents{discoveryErr: errors.New("temporary")}
 	got := coordinator(store, agents).Process(context.Background(), store.record.Item)
 	if got.State != StateError || got.Usage.APICalls != 1 || store.record.Usage.APICalls != 1 || store.record.RetryStage != StateDiscovery || store.record.ResearchRounds != 0 {
 		t.Fatalf("record=%+v", store.record)
+	}
+	if store.record.Item.SourceItemID != "1" || store.record.Item.URL == "" {
+		t.Fatalf("discovery error lost retry payload: %+v", store.record.Item)
 	}
 	agents.discoveryErr = nil
 	agents.discoveryCandidate = false
@@ -128,6 +192,17 @@ func TestCoordinatorErrorsAreRetryableAndDoNotConsumeResearchRound(t *testing.T)
 	got = coordinator(store, agents).Process(context.Background(), store.record.Item)
 	if got.State != StateError || store.record.RetryStage != StateResearch || store.record.ResearchRounds != 0 {
 		t.Fatalf("research failure=%+v", store.record)
+	}
+}
+
+func TestCoordinatorResumesPersistedPendingDiscovery(t *testing.T) {
+	record := testRecord("tgl")
+	record.Item.Text = "persisted pending source payload"
+	store := &memoryStore{record: record}
+	agents := &fakeAgents{discoveryCandidate: false}
+	got := coordinator(store, agents).Process(context.Background(), record.Item)
+	if got.State != StateDiscoveryDropped || agents.discoveryCalls != 1 {
+		t.Fatalf("result=%+v calls=%d", got, agents.discoveryCalls)
 	}
 }
 
@@ -170,7 +245,7 @@ func TestSemanticInputHashIgnoresRetrievedAtAndIsStable(t *testing.T) {
 	a := testRecord("tgl").Item
 	b := a
 	b.RetrievedAt = time.Now()
-	if hashJSON(semanticItem(a)) != hashJSON(semanticItem(b)) {
+	if SourceItemSemanticHash(a) != SourceItemSemanticHash(b) {
 		t.Fatal("retrieved_at changed semantic input hash")
 	}
 }
