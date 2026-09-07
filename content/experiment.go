@@ -21,22 +21,31 @@ type Experiment struct {
 }
 
 func (e Experiment) RunV1(ctx context.Context) (Summary, error) {
+	return e.Run(ctx, ExperimentV1Refs)
+}
+
+// Run generates drafts for an explicit, operator-selected set of already
+// READY_TO_PUBLISH items. RunV1 preserves the historical Batch 1 fixture.
+func (e Experiment) Run(ctx context.Context, refs []SourceRef) (Summary, error) {
 	if e.Store == nil || e.Agent == nil {
 		return Summary{}, fmt.Errorf("content experiment requires store and agent")
 	}
-	events, err := e.Store.LoadReadyEvents(ctx, ExperimentV1Refs)
+	if len(refs) == 0 {
+		return Summary{}, fmt.Errorf("content experiment requires at least one source item")
+	}
+	events, err := e.Store.LoadReadyEvents(ctx, refs)
 	if err != nil {
 		return Summary{}, err
 	}
-	if len(events) != len(ExperimentV1Refs) {
-		return Summary{}, fmt.Errorf("content experiment requires %d READY_TO_PUBLISH events, got %d", len(ExperimentV1Refs), len(events))
+	if len(events) != len(refs) {
+		return Summary{}, fmt.Errorf("content experiment requires %d READY_TO_PUBLISH events, got %d", len(refs), len(events))
 	}
 	byRef := make(map[string]ReadyEvent, len(events))
 	for _, event := range events {
 		byRef[event.Item.Source+"/"+event.Item.SourceItemID] = event
 	}
 	summary := Summary{SchemaVersion: SchemaVersion, StyleVersion: StyleVersion, Platform: PlatformVK}
-	for _, ref := range ExperimentV1Refs {
+	for _, ref := range refs {
 		event, ok := byRef[ref.Source+"/"+ref.SourceItemID]
 		if !ok {
 			return Summary{}, fmt.Errorf("missing READY_TO_PUBLISH event %s/%s", ref.Source, ref.SourceItemID)

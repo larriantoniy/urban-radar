@@ -84,6 +84,20 @@ func TestExperimentPersistsHumanReviewedDraftWithoutMutatingEvent(t *testing.T) 
 	}
 }
 
+func TestExperimentRunProcessesExplicitReadyItem(t *testing.T) {
+	ref := SourceRef{Source: "tgl", SourceItemID: "batch-2"}
+	event := readyEvent(ref)
+	store := &fakeStore{events: []ReadyEvent{event}}
+	agent := &urlAgent{}
+	summary, err := (Experiment{Store: store, Agent: agent}).Run(context.Background(), []SourceRef{ref})
+	if err != nil || agent.calls != 1 || len(summary.Results) != 1 || len(store.drafts) != 1 {
+		t.Fatalf("summary=%+v calls=%d drafts=%d err=%v", summary, agent.calls, len(store.drafts), err)
+	}
+	if store.drafts[0].SourceItemID != "batch-2" || store.drafts[0].HumanReviewStatus != "PENDING" {
+		t.Fatalf("draft=%+v", store.drafts[0])
+	}
+}
+
 func TestExperimentRejectsMalformedOutputAndDoesNotPersist(t *testing.T) {
 	events := make([]ReadyEvent, 0, len(ExperimentV1Refs))
 	for _, ref := range ExperimentV1Refs {

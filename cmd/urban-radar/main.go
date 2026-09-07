@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -62,11 +63,13 @@ func contentExperimentV1(args []string) {
 	model := flags.String("model", "deepseek/deepseek-v4-flash-0731", "Hermes model")
 	provider := flags.String("provider", "openrouter", "Hermes provider")
 	root := flags.String("repository-root", ".", "repository root containing agents/ and .hermes/skills/")
+	var items sourceRefFlags
+	flags.Var(&items, "item", "READY_TO_PUBLISH source item as source/source_item_id; repeatable")
 	if err := flags.Parse(args); err != nil {
 		fail(err.Error())
 	}
 	if flags.NArg() != 0 {
-		fail("usage: urban-radar content experiment-v1 [flags]")
+		fail("usage: urban-radar content experiment-v1 [--item source/source_item_id] [flags]")
 	}
 	ctx := context.Background()
 	databaseURL, err := storage.DatabaseURLFromEnv()
@@ -86,13 +89,32 @@ func contentExperimentV1(args []string) {
 	if err != nil {
 		fail("load content agent: " + err.Error())
 	}
-	summary, err := (content.Experiment{Store: storage.NewPostgresStore(db), Agent: agents, Model: *model, Provider: *provider}).RunV1(ctx)
+	experiment := content.Experiment{Store: storage.NewPostgresStore(db), Agent: agents, Model: *model, Provider: *provider}
+	var summary content.Summary
+	if len(items) == 0 {
+		summary, err = experiment.RunV1(ctx)
+	} else {
+		summary, err = experiment.Run(ctx, []content.SourceRef(items))
+	}
 	if encodeErr := json.NewEncoder(os.Stdout).Encode(summary); encodeErr != nil {
 		fail(encodeErr.Error())
 	}
 	if err != nil {
 		fail(err.Error())
 	}
+}
+
+type sourceRefFlags []content.SourceRef
+
+func (f *sourceRefFlags) String() string { return "" }
+
+func (f *sourceRefFlags) Set(value string) error {
+	parts := strings.SplitN(value, "/", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+		return fmt.Errorf("item must be source/source_item_id")
+	}
+	*f = append(*f, content.SourceRef{Source: parts[0], SourceItemID: parts[1]})
+	return nil
 }
 
 func checkNews(args []string) {
@@ -168,7 +190,7 @@ func writeSummary(summary newscheck.Summary, err error) {
 }
 
 func usage() string {
-	return "usage: urban-radar tgl list | urban-radar tgl get <url> | urban-radar news check [--preflight] [flags] | urban-radar content experiment-v1 [flags]"
+	return "usage: urban-radar tgl list | urban-radar tgl get <url> | urban-radar news check [--preflight] [flags] | urban-radar content experiment-v1 [--item source/source_item_id] [flags]"
 }
 
 func fail(message string) { fmt.Fprintln(os.Stderr, "urban-radar:", message); os.Exit(1) }
