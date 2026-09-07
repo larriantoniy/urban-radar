@@ -204,3 +204,75 @@ Runtime V0 does not publish, poll in the background, update a project store,
 perform cross-source semantic deduplication, or provide Research for TGL. A
 future Telegram command `проверь новости` should be a thin adapter calling the
 same `NewsCheckRunner`; it must not duplicate business logic.
+
+## Ubuntu daily cron operation
+
+The runtime stays a normal CLI. Ubuntu cron starts the same production binary;
+there is no scheduler, worker, or daemon in Go:
+
+```text
+cron → flock → /opt/urban-radar/bin/urban-radar news check → PostgreSQL
+```
+
+Build and install a release as the deployment user (example layout):
+
+```sh
+sudo install -d -o urban-radar -g urban-radar /opt/urban-radar/{bin,logs,run}
+sudo -u urban-radar git -C /srv/urban-radar pull --ff-only
+sudo -u urban-radar sh -c 'cd /srv/urban-radar && go build -o /opt/urban-radar/bin/urban-radar ./cmd/urban-radar'
+sudo -u urban-radar sh -c 'cd /srv/urban-radar && go build -o /opt/urban-radar/bin/tgl-mcp ./cmd/tgl-mcp'
+sudo -u urban-radar sh -c 'cd /srv/urban-radar && go build -o /opt/urban-radar/bin/zakupki-mcp ./cmd/zakupki-mcp'
+sudo install -m 700 -o urban-radar -g urban-radar /srv/urban-radar/scripts/run-news-check.sh /opt/urban-radar/bin/run-news-check
+sudo -u urban-radar cp /srv/urban-radar/.env.example /opt/urban-radar/.env
+sudo chmod 600 /opt/urban-radar/.env
+```
+
+Edit `/opt/urban-radar/.env` with `DATABASE_URL` and
+`ZAKUPKI_SEARCH_URL`; set `ZAKUPKI_CA_FILE` only when the host needs the
+external CA bundle. Set `URBAN_RADAR_HOME` to the deployment user's home and
+make sure `PATH` includes the `hermes` executable. Hermes reads its own model,
+provider, and MCP configuration from that same user's configuration; Go does
+not read an OpenRouter key itself. Do not commit the env file, CA bundle, or
+Hermes user configuration.
+
+For production, configure that user's Hermes MCP entries with absolute binary
+paths rather than `go run`, while retaining the existing tool allowlists:
+
+```yaml
+urban-radar-tgl:
+  command: /opt/urban-radar/bin/tgl-mcp
+urban-radar-zakupki:
+  command: /opt/urban-radar/bin/zakupki-mcp
+```
+
+The source-backed `hermes/tgl-mcp.example.yaml` remains a development example.
+
+The wrapper takes a non-blocking `flock` at
+`/opt/urban-radar/run/news-check.lock`; a concurrent invocation exits `75`
+without touching PostgreSQL. It appends stdout and stderr to
+`/opt/urban-radar/logs/news-check.log`. A successful CLI execution returns
+`0`; runtime/bootstrap failures propagate a non-zero code. Item-level
+retryable errors may still yield a normal process exit when the NewsCheck
+summary is `PARTIAL`.
+
+Example daily schedule at 20:30 Samara server local time (confirm the server
+timezone with `timedatectl` first; otherwise set `CRON_TZ=Europe/Samara`):
+
+```cron
+CRON_TZ=Europe/Samara
+30 20 * * * /opt/urban-radar/bin/run-news-check
+```
+
+Manual operations use the same wrapper, so they respect the lock:
+
+```sh
+sudo -u urban-radar /opt/urban-radar/bin/run-news-check
+tail -n 200 /opt/urban-radar/logs/news-check.log
+sudo -u postgres psql urban_radar -c 'SELECT run_id,status,started_at,finished_at FROM news_check_runs ORDER BY started_at DESC LIMIT 1;'
+```
+
+To temporarily disable scheduling, comment out the crontab line with
+`crontab -e` for the deployment user; do not delete checkpoints or runtime
+state. Before unattended use, ensure the deployment's Hermes/provider security
+policy permits the configured model calls for this command. The wrapper does
+not bypass an interactive or host-level permission guard.
