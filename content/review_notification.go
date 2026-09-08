@@ -88,6 +88,9 @@ func (s ReviewNotificationService) Notify(ctx context.Context, draftID *int64) (
 
 // BuildReviewNotification forms plain deterministic Telegram text. It does
 // not summarize, transform, or otherwise generate ContentDraft content.
+// Content V1 owns the rendered source attribution: post_text already ends
+// with the canonical source URL. SourceURL remains structured provenance for
+// validation and future publishing, but is never rendered a second time here.
 func BuildReviewNotification(draft Draft) (ReviewNotification, error) {
 	if draft.ContentDraftID <= 0 || draft.HumanReviewStatus != ReviewStatusPending || draft.PostText == "" || draft.SourceURL == "" {
 		return ReviewNotification{}, ErrInvalidReviewNotification
@@ -97,7 +100,7 @@ func BuildReviewNotification(draft Draft) (ReviewNotification, error) {
 	if len(approve) > 64 || len(reject) > 64 {
 		return ReviewNotification{}, ErrInvalidReviewNotification
 	}
-	text := "Новый пост готов\n\n" + draft.PostText + "\n\nИсточник: " + draft.SourceURL
+	text := "Новый пост готов\n\n" + draft.PostText
 	if len(utf16.Encode([]rune(text))) > telegramMessageUTF16Limit {
 		return ReviewNotification{}, fmt.Errorf("%w: Telegram message exceeds %d UTF-16 code units", ErrInvalidReviewNotification, telegramMessageUTF16Limit)
 	}

@@ -3,6 +3,7 @@ package content
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -53,7 +54,7 @@ func (s *fakeNotificationSender) SendReviewNotification(_ context.Context, notif
 }
 
 func pendingNotificationDraft(id int64) Draft {
-	return Draft{ContentDraftID: id, HumanReviewRequired: true, HumanReviewStatus: ReviewStatusPending, PostText: "Городское изменение", SourceURL: "https://example.test/source"}
+	return Draft{ContentDraftID: id, HumanReviewRequired: true, HumanReviewStatus: ReviewStatusPending, PostText: "Городское изменение\n\nИсточник: example.test\nhttps://example.test/source", SourceURL: "https://example.test/source"}
 }
 
 func TestBuildReviewNotificationUsesExactDraftAndCallbackContract(t *testing.T) {
@@ -61,9 +62,12 @@ func TestBuildReviewNotificationUsesExactDraftAndCallbackContract(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "Новый пост готов\n\nГородское изменение\n\nИсточник: https://example.test/source"
+	want := "Новый пост готов\n\nГородское изменение\n\nИсточник: example.test\nhttps://example.test/source"
 	if notification.Text != want || notification.ApproveCallbackData != "ur:approve:42" || notification.RejectCallbackData != "ur:reject:42" {
 		t.Fatalf("notification=%+v", notification)
+	}
+	if strings.Count(notification.Text, notification.SourceURL) != 1 || strings.Count(notification.Text, "Источник:") != 1 {
+		t.Fatalf("source attribution must appear exactly once: %q", notification.Text)
 	}
 }
 

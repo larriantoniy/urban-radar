@@ -44,6 +44,11 @@ Approval persists actor, timestamp, and a SHA-256 hash of the exact `post_text`.
 
 Review notification delivery is separate from review status. Successful delivery persists notification time, channel, and Telegram external message ID. Ordinary replay skips a delivered draft; the current semantics are at-least-once because a crash after Telegram accepts a message but before the database mark can duplicate delivery.
 
+`ContentDraft.post_text` owns rendered source attribution and is shown unchanged
+under the review-card heading. The structured `source_url` remains persisted
+provenance for validation and future Publisher V0 payloads; the notifier must
+not append a second source footer.
+
 Hermes is Telegram transport/UI only. The pinned Hermes plugin routes the exact `ur:` callback through Hermes authorization and a strict parser to the Go review CLI. The actor is represented as `telegram:<numeric-user-id>`. No LLM participates in notification, approve, or reject execution paths.
 
 The callback UX acknowledges every handled callback. After a durable decision,
