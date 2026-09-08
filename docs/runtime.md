@@ -222,9 +222,10 @@ exits. PostgreSQL is private to the Compose network and persists in the named
 
 ### Install Docker and deploy
 
-The following is a clean Ubuntu VPS procedure. It uses Docker's official apt
-repository; run it as an administrator and review the desired repository
-revision before building.
+The following is a clean personal Ubuntu VPS procedure. The host operator is
+the existing Linux user `radar`; do not create a separate host user for Urban
+Radar. Dockerfile references to `urban-radar` are intentionally a distinct,
+non-root *container* identity.
 
 ```sh
 sudo apt update
@@ -238,18 +239,20 @@ sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin d
 sudo docker version
 sudo docker compose version
 
-sudo useradd --system --create-home --home-dir /home/urban-radar --shell /usr/sbin/nologin urban-radar || true
-sudo usermod -aG docker urban-radar
-sudo install -d -o urban-radar -g urban-radar /srv /opt/urban-radar/{bin,hermes,logs,run,secrets}
-sudo -u urban-radar git clone <REPOSITORY_URL> /srv/urban-radar
-sudo -u urban-radar git -C /srv/urban-radar checkout <VALIDATED_COMMIT>
-sudo install -m 700 -o urban-radar -g urban-radar /srv/urban-radar/scripts/run-news-check.sh /opt/urban-radar/bin/run-news-check
-sudo -u urban-radar cp /srv/urban-radar/.env.example /opt/urban-radar/.env
-sudo chmod 600 /opt/urban-radar/.env
+sudo usermod -aG docker radar
+sudo install -d -o radar -g radar /srv/urban-radar /opt/urban-radar/{bin,hermes,logs,run,secrets}
+git clone <REPOSITORY_URL> /srv/urban-radar
+git -C /srv/urban-radar checkout <VALIDATED_COMMIT>
+sudo install -m 700 -o radar -g radar /srv/urban-radar/scripts/run-news-check.sh /opt/urban-radar/bin/run-news-check
+cp /srv/urban-radar/.env.example /opt/urban-radar/.env
+chmod 600 /opt/urban-radar/.env
 ```
 
-Log in again as `urban-radar` (or otherwise refresh its Docker group
-membership) before running Docker commands. The deployment layout is:
+Run the commands after the initial host-administration commands as `radar`.
+Log out and back in before running Docker commands so the new Docker group
+membership applies. Docker-group membership effectively grants very high host
+privileges; use it only for this trusted personal-server operator. The
+deployment layout is owned by `radar`:
 
 ```text
 /srv/urban-radar/                 # Git checkout: Dockerfile and compose.yaml
@@ -279,7 +282,7 @@ or any provider credential in cron or Compose source files.
 Hermes owns model/provider selection, provider authentication and MCP settings;
 Go does not read an OpenRouter key itself. Set
 `HERMES_HOME_HOST_DIR=/opt/urban-radar/hermes`, keep that directory mode 700
-and owned by the deployment user, and configure its `config.yaml` with the
+and owned by `radar`, and configure its `config.yaml` with the
 container-path MCP commands in
 [`hermes/mcp-container.example.yaml`](../hermes/mcp-container.example.yaml).
 Hermes credentials remain inside that operator-owned directory and are mounted
@@ -301,23 +304,21 @@ copied into the image or Git.
 Build the image and start only PostgreSQL:
 
 ```sh
-sudo -u urban-radar docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml build
-sudo -u urban-radar docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml up -d postgres
-sudo -u urban-radar docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml ps
+docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml build
+docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml up -d postgres
+docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml ps
 ```
 
 Apply migrations explicitly in filename order. They are not applied during an
 application start, and migration rollback is not automatic:
 
 ```sh
-sudo -u urban-radar sh -c '
-  set -eu
-  set -a; . /opt/urban-radar/.env; set +a
-  for migration in /srv/urban-radar/migrations/*.sql; do
-    docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml exec -T postgres \
-      psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$migration"
-  done
-'
+set -eu
+set -a; . /opt/urban-radar/.env; set +a
+for migration in /srv/urban-radar/migrations/*.sql; do
+  docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml exec -T postgres \
+    psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$migration"
+done
 ```
 
 Manually run the same wrapper that cron will use, then inspect its log, the
@@ -325,10 +326,11 @@ latest persisted run and source checkpoints. Do this once before installing
 cron:
 
 ```sh
-sudo -u urban-radar /opt/urban-radar/bin/run-news-check
+/opt/urban-radar/bin/run-news-check
 tail -n 200 /opt/urban-radar/logs/news-check.log
-sudo -u urban-radar sh -c 'set -a; . /opt/urban-radar/.env; set +a; docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT run_id,status,started_at,finished_at FROM news_check_runs ORDER BY started_at DESC LIMIT 1;"'
-sudo -u urban-radar sh -c 'set -a; . /opt/urban-radar/.env; set +a; docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT source,last_successful_collection_at FROM source_checkpoints ORDER BY source;"'
+set -a; . /opt/urban-radar/.env; set +a
+docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT run_id,status,started_at,finished_at FROM news_check_runs ORDER BY started_at DESC LIMIT 1;"
+docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT source,last_successful_collection_at FROM source_checkpoints ORDER BY source;"
 ```
 
 The wrapper takes the host-side non-blocking lock
@@ -342,9 +344,9 @@ persisted NewsCheck summary is `PARTIAL`.
 
 ### Cron, backup, upgrade and rollback
 
-Confirm the server timezone with `timedatectl`, then add this *host* crontab
-entry for the deployment user; it contains no secrets and never runs inside a
-container:
+Confirm the server timezone with `timedatectl`, then, as `radar`, run
+`crontab -e` and add this host crontab entry. It contains no secrets, no
+`sudo`, and never runs inside a container:
 
 ```cron
 CRON_TZ=Europe/Samara
@@ -357,7 +359,8 @@ that line with `crontab -e`; do not delete checkpoints or runtime state.
 Take a manual PostgreSQL backup before an upgrade:
 
 ```sh
-sudo -u urban-radar sh -c 'set -a; . /opt/urban-radar/.env; set +a; docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > urban-radar-$(date +%F).dump
+set -a; . /opt/urban-radar/.env; set +a
+docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc > urban-radar-$(date +%F).dump
 ```
 
 To upgrade, check out the intended commit in `/srv/urban-radar`, build it,
