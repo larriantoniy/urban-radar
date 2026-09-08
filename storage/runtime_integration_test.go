@@ -2,7 +2,9 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -121,7 +123,10 @@ func TestPostgresStorePersistsContentDraftSeparately(t *testing.T) {
 	store := NewPostgresStore(db)
 	now := time.Date(2026, 9, 5, 10, 0, 0, 0, time.UTC)
 	item := source.SourceItem{Source: "storage-test", SourceItemID: "content-draft-contract", URL: "https://example.test/content", Title: "content", Text: "facts", RetrievedAt: now}
+	_, _ = db.ExecContext(ctx, `DELETE FROM content_drafts WHERE source=$1 AND source_item_id=$2`, item.Source, item.SourceItemID)
+	_, _ = db.ExecContext(ctx, `DELETE FROM source_items WHERE source=$1 AND source_item_id=$2`, item.Source, item.SourceItemID)
 	defer db.ExecContext(ctx, `DELETE FROM source_items WHERE source=$1 AND source_item_id=$2`, item.Source, item.SourceItemID)
+	defer db.ExecContext(ctx, `DELETE FROM content_drafts WHERE source=$1 AND source_item_id=$2`, item.Source, item.SourceItemID)
 	record, _, err := store.UpsertSeen(ctx, item, now)
 	if err != nil {
 		t.Fatal(err)
@@ -144,5 +149,181 @@ func TestPostgresStorePersistsContentDraftSeparately(t *testing.T) {
 	stored, err := store.Get(ctx, item.Source, item.SourceItemID)
 	if err != nil || stored.State != urruntime.StateReadyToPublish || stored.Editor == nil {
 		t.Fatalf("source item was mutated: %+v err=%v", stored, err)
+	}
+}
+
+func TestPostgresStoreContentDraftReviewTransition(t *testing.T) {
+	url := os.Getenv("URBAN_RADAR_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("URBAN_RADAR_TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	db, err := OpenPostgres(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := NewPostgresStore(db)
+	now := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
+	item := source.SourceItem{Source: "storage-test", SourceItemID: "content-draft-review", URL: "https://example.test/review", Title: "review", Text: "facts", RetrievedAt: now}
+	_, _ = db.ExecContext(ctx, `DELETE FROM content_drafts WHERE source=$1 AND source_item_id=$2`, item.Source, item.SourceItemID)
+	_, _ = db.ExecContext(ctx, `DELETE FROM source_items WHERE source=$1 AND source_item_id=$2`, item.Source, item.SourceItemID)
+	defer db.ExecContext(ctx, `DELETE FROM source_items WHERE source=$1 AND source_item_id=$2`, item.Source, item.SourceItemID)
+	defer db.ExecContext(ctx, `DELETE FROM content_drafts WHERE source=$1 AND source_item_id=$2`, item.Source, item.SourceItemID)
+	record, _, err := store.UpsertSeen(ctx, item, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.State = urruntime.StateReadyToPublish
+	record.Discovery = &urruntime.StageResult{Output: []byte(`{"outcome":"CANDIDATE"}`), At: now}
+	record.Editor = &urruntime.StageResult{PolicyID: "editor-v1:test", InputHash: "editor-input", Output: []byte(`{"decisions":[{"decision":"PUBLISH"}]}`), At: now}
+	record.UpdatedAt = now
+	if err := store.Save(ctx, record); err != nil {
+		t.Fatal(err)
+	}
+	draft := content.Draft{Source: item.Source, SourceItemID: item.SourceItemID, SchemaVersion: content.SchemaVersion, StyleVersion: content.StyleVersion, Platform: content.PlatformVK, EventType: "OTHER", Hook: "Hook", Body: "Body", SourceLabel: "example", SourceURL: item.URL, PostText: "exact review text", FactWarnings: []string{}, HumanReviewRequired: true, HumanReviewStatus: content.ReviewStatusPending, SourceInputHash: "review-input", EditorPolicyID: "editor-v1:test", EditorInputHash: "editor-input", Model: "test", Provider: "test", GeneratedAt: now, RawOutput: []byte(`{}`)}
+	if err := store.SaveContentDraft(ctx, draft); err != nil {
+		t.Fatal(err)
+	}
+	draft, found, err := store.FindContentDraft(ctx, item.Source, item.SourceItemID, draft.StyleVersion, draft.Platform, draft.SourceInputHash)
+	if err != nil || !found || draft.ContentDraftID == 0 {
+		t.Fatalf("found=%v draft=%+v err=%v", found, draft, err)
+	}
+	service := content.ReviewService{Store: store, Now: func() time.Time { return now }}
+	type approvalResult struct {
+		result content.ReviewResult
+		err    error
+	}
+	start := make(chan struct{})
+	results := make(chan approvalResult, 2)
+	var wait sync.WaitGroup
+	for range 2 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			result, err := service.ApproveDraft(ctx, draft.ContentDraftID, "telegram:123")
+			results <- approvalResult{result, err}
+		}()
+	}
+	close(start)
+	wait.Wait()
+	close(results)
+	var approved content.ReviewResult
+	applied := 0
+	for result := range results {
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		if result.result.Applied {
+			applied++
+			approved = result.result
+		}
+	}
+	if applied != 1 || approved.Draft.HumanReviewStatus != content.ReviewStatusApproved || approved.Draft.ApprovedAt == nil || approved.Draft.ApprovedBy != "telegram:123" || approved.Draft.RejectedAt != nil || approved.Draft.RejectedBy != "" || !content.IsPublishable(approved.Draft) {
+		t.Fatalf("concurrent approved=%+v applied=%d", approved, applied)
+	}
+	if approved.Draft.ApprovedContentHash != content.ContentHash("exact review text") {
+		t.Fatalf("wrong approval hash: %q", approved.Draft.ApprovedContentHash)
+	}
+	replay, err := service.ApproveDraft(ctx, draft.ContentDraftID, "telegram:123")
+	if err != nil || replay.Applied || replay.Draft.ApprovedAt == nil || !replay.Draft.ApprovedAt.Equal(*approved.Draft.ApprovedAt) {
+		t.Fatalf("replay=%+v err=%v", replay, err)
+	}
+	if _, err := service.RejectDraft(ctx, draft.ContentDraftID, "telegram:123"); !errors.Is(err, content.ErrInvalidReviewTransition) {
+		t.Fatalf("approved -> rejected err=%v", err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE content_drafts SET post_text='mutated after approval' WHERE content_draft_id=$1`, draft.ContentDraftID); err != nil {
+		t.Fatal(err)
+	}
+	mutated, found, err := store.FindContentDraft(ctx, item.Source, item.SourceItemID, draft.StyleVersion, draft.Platform, draft.SourceInputHash)
+	if err != nil || !found || content.IsPublishable(mutated) {
+		t.Fatalf("mutated=%+v found=%v err=%v", mutated, found, err)
+	}
+	rejected := draft
+	rejected.ContentDraftID = 0
+	rejected.SourceInputHash = "rejected-input"
+	rejected.PostText = "text rejected before publication"
+	if err := store.SaveContentDraft(ctx, rejected); err != nil {
+		t.Fatal(err)
+	}
+	rejected, found, err = store.FindContentDraft(ctx, item.Source, item.SourceItemID, rejected.StyleVersion, rejected.Platform, rejected.SourceInputHash)
+	if err != nil || !found {
+		t.Fatalf("rejected draft found=%v err=%v", found, err)
+	}
+	rejectedResult, err := service.RejectDraft(ctx, rejected.ContentDraftID, "operator:radar")
+	if err != nil || !rejectedResult.Applied || rejectedResult.Draft.HumanReviewStatus != content.ReviewStatusRejected || rejectedResult.Draft.RejectedAt == nil || rejectedResult.Draft.RejectedBy != "operator:radar" || rejectedResult.Draft.ApprovedAt != nil || rejectedResult.Draft.ApprovedContentHash != "" || content.IsPublishable(rejectedResult.Draft) {
+		t.Fatalf("rejected=%+v err=%v", rejectedResult, err)
+	}
+	if _, err := service.ApproveDraft(ctx, rejected.ContentDraftID, "operator:radar"); !errors.Is(err, content.ErrInvalidReviewTransition) {
+		t.Fatalf("rejected -> approved err=%v", err)
+	}
+}
+
+func TestPostgresStoreReviewNotificationDelivery(t *testing.T) {
+	url := os.Getenv("URBAN_RADAR_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("URBAN_RADAR_TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	db, err := OpenPostgres(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := NewPostgresStore(db)
+	now := time.Date(2026, 9, 8, 13, 0, 0, 0, time.UTC)
+	item := source.SourceItem{Source: "storage-test", SourceItemID: "content-review-notification", URL: "https://example.test/review-notify", Title: "review notify", Text: "facts", RetrievedAt: now}
+	_, _ = db.ExecContext(ctx, `DELETE FROM content_drafts WHERE source=$1 AND source_item_id=$2`, item.Source, item.SourceItemID)
+	_, _ = db.ExecContext(ctx, `DELETE FROM source_items WHERE source=$1 AND source_item_id=$2`, item.Source, item.SourceItemID)
+	defer db.ExecContext(ctx, `DELETE FROM source_items WHERE source=$1 AND source_item_id=$2`, item.Source, item.SourceItemID)
+	defer db.ExecContext(ctx, `DELETE FROM content_drafts WHERE source=$1 AND source_item_id=$2`, item.Source, item.SourceItemID)
+	record, _, err := store.UpsertSeen(ctx, item, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.State = urruntime.StateReadyToPublish
+	record.Discovery = &urruntime.StageResult{Output: []byte(`{"outcome":"CANDIDATE"}`), At: now}
+	record.Editor = &urruntime.StageResult{PolicyID: "editor-v1:test", InputHash: "editor-input", Output: []byte(`{"decisions":[{"decision":"PUBLISH"}]}`), At: now}
+	record.UpdatedAt = now
+	if err := store.Save(ctx, record); err != nil {
+		t.Fatal(err)
+	}
+	draft := content.Draft{Source: item.Source, SourceItemID: item.SourceItemID, SchemaVersion: content.SchemaVersion, StyleVersion: content.StyleVersion, Platform: content.PlatformVK, EventType: "OTHER", Hook: "Hook", Body: "Body", SourceLabel: "example", SourceURL: item.URL, PostText: "review notification text", FactWarnings: []string{}, HumanReviewRequired: true, HumanReviewStatus: content.ReviewStatusPending, SourceInputHash: "review-notify-input", EditorPolicyID: "editor-v1:test", EditorInputHash: "editor-input", Model: "test", Provider: "test", GeneratedAt: now, RawOutput: []byte(`{}`)}
+	if err := store.SaveContentDraft(ctx, draft); err != nil {
+		t.Fatal(err)
+	}
+	eligible, err := store.ListPendingReviewNotificationDrafts(ctx, nil)
+	if err != nil || len(eligible) == 0 {
+		t.Fatalf("eligible=%+v err=%v", eligible, err)
+	}
+	var stored content.Draft
+	for _, candidate := range eligible {
+		if candidate.Source == item.Source && candidate.SourceItemID == item.SourceItemID {
+			stored = candidate
+		}
+	}
+	if stored.ContentDraftID == 0 {
+		t.Fatal("test draft was not eligible")
+	}
+	delivery := content.ReviewNotificationDelivery{Channel: "telegram:1001", ExternalID: "9001"}
+	if err := store.MarkReviewNotificationDelivered(ctx, stored.ContentDraftID, delivery, now); err != nil {
+		t.Fatal(err)
+	}
+	id := stored.ContentDraftID
+	eligible, err = store.ListPendingReviewNotificationDrafts(ctx, &id)
+	if err != nil || len(eligible) != 0 {
+		t.Fatalf("delivered draft replay eligible=%+v err=%v", eligible, err)
+	}
+	if err := store.MarkReviewNotificationDelivered(ctx, stored.ContentDraftID, delivery, now); !errors.Is(err, content.ErrReviewNotificationSent) {
+		t.Fatalf("second delivery mark err=%v", err)
+	}
+	var channel, externalID string
+	var notified time.Time
+	if err := db.QueryRowContext(ctx, `SELECT review_notified_at,review_notification_channel,review_notification_external_id FROM content_drafts WHERE content_draft_id=$1`, stored.ContentDraftID).Scan(&notified, &channel, &externalID); err != nil {
+		t.Fatal(err)
+	}
+	if !notified.Equal(now) || channel != delivery.Channel || externalID != delivery.ExternalID {
+		t.Fatalf("notified=%s channel=%q externalID=%q", notified, channel, externalID)
 	}
 }

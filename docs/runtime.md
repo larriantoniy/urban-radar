@@ -288,6 +288,41 @@ container-path MCP commands in
 Hermes credentials remain inside that operator-owned directory and are mounted
 only into the application container as `HERMES_HOME=/var/lib/hermes`.
 
+### Telegram review callback deployment invariant
+
+The current Compose topology has no long-running Hermes gateway service: it
+contains only PostgreSQL and the one-shot `urban-radar` runtime. Telegram
+review deployment is therefore not enabled by this document or by Compose.
+
+When a gateway is deliberately deployed, its own process environment must
+contain both of these values before plugin discovery:
+
+```text
+URBAN_RADAR_REVIEW_COMMAND=<absolute executable path>
+DATABASE_URL=<PostgreSQL URL reachable from that gateway process>
+```
+
+The review plugin validates both at registration. A missing value, a relative
+path, or a non-executable command prevents the plugin from registering; it
+never falls back to an interactive shell or a guessed `urban-radar` command.
+Values must be provided by the gateway supervisor: launchd `EnvironmentVariables`
+for the local macOS gateway, or a future Compose gateway service `environment`
+block sourced from the operator-owned `/opt/urban-radar/.env`. They must not
+be added to Git, a plugin manifest, or the image.
+
+The local macOS gateway currently demonstrates the launchd variant with an
+absolute operator-owned Urban Radar binary path. Hermes loads its managed home
+before plugin discovery; the plugin registration preflight then verifies the
+effective process environment without logging any value. This is a
+configuration check only and does not contact Telegram, PostgreSQL, or VK.
+
+For the future container topology, the stable command is
+`/usr/local/bin/urban-radar`, because that is the path baked into the existing
+Urban Radar image. The future gateway service must receive `DATABASE_URL` from
+the same operator-owned Compose environment and mount the configured Hermes
+home containing the review plugin. Adding that service is a separate
+deployment milestone; no systemd unit or second scheduler exists today.
+
 If EIS requires an external CA, place it at
 `/opt/urban-radar/secrets/Russian_Trusted_CA.pem`, mode 600, and set:
 

@@ -90,7 +90,7 @@ func (e Experiment) generate(ctx context.Context, event ReadyEvent, sourceInputH
 	draft.SourceInputHash = sourceInputHash
 	draft.EditorPolicyID, draft.EditorInputHash = event.Editor.PolicyID, event.Editor.InputHash
 	draft.Model, draft.Provider, draft.GeneratedAt, draft.Usage, draft.RawOutput = e.Model, e.Provider, now, usage, outcome.Output
-	draft.HumanReviewStatus = "PENDING"
+	draft.HumanReviewStatus = ReviewStatusPending
 	if err := e.Store.SaveContentDraft(ctx, draft); err != nil {
 		return Result{Draft: draft, Error: err.Error()}
 	}

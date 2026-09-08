@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -27,6 +29,14 @@ func main() {
 	}
 	if len(os.Args) >= 3 && os.Args[1] == "content" && os.Args[2] == "experiment-v1" {
 		contentExperimentV1(os.Args[3:])
+		return
+	}
+	if len(os.Args) >= 3 && os.Args[1] == "content" && os.Args[2] == "review" {
+		contentReview(os.Args[3:])
+		return
+	}
+	if len(os.Args) >= 3 && os.Args[1] == "content" && os.Args[2] == "review-notify" {
+		contentReviewNotify(os.Args[3:])
 		return
 	}
 	if len(os.Args) < 3 || os.Args[1] != "tgl" {
@@ -102,6 +112,87 @@ func contentExperimentV1(args []string) {
 	if err != nil {
 		fail(err.Error())
 	}
+}
+
+type reviewCommandOutput struct {
+	Result      string `json:"result"`
+	DraftID     int64  `json:"draft_id,omitempty"`
+	ReviewState string `json:"review_state,omitempty"`
+	ErrorCode   string `json:"error_code,omitempty"`
+	Error       string `json:"error,omitempty"`
+}
+
+func contentReview(args []string) {
+	if len(args) < 2 {
+		reviewFail("INVALID_ARGUMENTS", "usage: urban-radar content review approve|reject <draft-id> --actor <actor>")
+	}
+	action, draftIDText := args[0], args[1]
+	draftID, err := strconv.ParseInt(draftIDText, 10, 64)
+	if err != nil || draftID <= 0 {
+		reviewFail("INVALID_ARGUMENTS", "draft-id must be a positive int64")
+	}
+	flags := flag.NewFlagSet("content review", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	actor := flags.String("actor", "", "deterministic review actor")
+	if err := flags.Parse(args[2:]); err != nil || flags.NArg() != 0 || strings.TrimSpace(*actor) == "" {
+		reviewFail("INVALID_ARGUMENTS", "usage: urban-radar content review approve|reject <draft-id> --actor <actor>")
+	}
+	ctx := context.Background()
+	databaseURL, err := storage.DatabaseURLFromEnv()
+	if err != nil {
+		reviewFail("DATABASE_ERROR", err.Error())
+	}
+	output, err := executeContentReview(ctx, databaseURL, action, draftID, *actor)
+	if err != nil {
+		reviewFail(reviewErrorCode(err), err.Error())
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(output); err != nil {
+		fail(err.Error())
+	}
+}
+
+func executeContentReview(ctx context.Context, databaseURL, action string, draftID int64, actor string) (reviewCommandOutput, error) {
+	db, err := storage.OpenPostgres(ctx, databaseURL)
+	if err != nil {
+		return reviewCommandOutput{}, err
+	}
+	defer db.Close()
+	service := content.ReviewService{Store: storage.NewPostgresStore(db)}
+	var result content.ReviewResult
+	switch action {
+	case "approve":
+		result, err = service.ApproveDraft(ctx, draftID, actor)
+	case "reject":
+		result, err = service.RejectDraft(ctx, draftID, actor)
+	default:
+		return reviewCommandOutput{}, fmt.Errorf("%w: action must be approve or reject", content.ErrInvalidReviewRequest)
+	}
+	if err != nil {
+		return reviewCommandOutput{}, err
+	}
+	status := "APPLIED"
+	if !result.Applied {
+		status = "IDEMPOTENT"
+	}
+	return reviewCommandOutput{Result: status, DraftID: result.Draft.ContentDraftID, ReviewState: result.Draft.HumanReviewStatus}, nil
+}
+
+func reviewErrorCode(err error) string {
+	switch {
+	case errors.Is(err, content.ErrReviewDraftNotFound):
+		return "DRAFT_NOT_FOUND"
+	case errors.Is(err, content.ErrInvalidReviewTransition):
+		return "INVALID_TRANSITION"
+	case errors.Is(err, content.ErrInvalidReviewRequest):
+		return "INVALID_ARGUMENTS"
+	default:
+		return "DATABASE_ERROR"
+	}
+}
+
+func reviewFail(code, message string) {
+	_ = json.NewEncoder(os.Stdout).Encode(reviewCommandOutput{Result: "ERROR", ErrorCode: code, Error: message})
+	fail(message)
 }
 
 type sourceRefFlags []content.SourceRef
@@ -190,7 +281,7 @@ func writeSummary(summary newscheck.Summary, err error) {
 }
 
 func usage() string {
-	return "usage: urban-radar tgl list | urban-radar tgl get <url> | urban-radar news check [--preflight] [flags] | urban-radar content experiment-v1 [--item source/source_item_id] [flags]"
+	return "usage: urban-radar tgl list | urban-radar tgl get <url> | urban-radar news check [--preflight] [flags] | urban-radar content experiment-v1 [--item source/source_item_id] [flags] | urban-radar content review approve|reject <draft-id> --actor <actor> | urban-radar content review-notify [--draft-id <id>]"
 }
 
 func fail(message string) { fmt.Fprintln(os.Stderr, "urban-radar:", message); os.Exit(1) }

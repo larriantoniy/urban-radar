@@ -15,6 +15,8 @@ migrations/003_selective_source_materialization.sql
 migrations/004_news_check_run_lifecycle.sql
 migrations/005_content_drafts.sql
 migrations/006_content_draft_review_notes.sql
+migrations/007_content_draft_persisted_review.sql
+migrations/008_content_draft_review_notifications.sql
 ```
 
 The application-level persistence ports live beside `runtime/` and
@@ -35,6 +37,8 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/003_selective_source_mater
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/004_news_check_run_lifecycle.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/005_content_drafts.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/006_content_draft_review_notes.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/007_content_draft_persisted_review.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/008_content_draft_review_notifications.sql
 ```
 
 `storage.OpenPostgres` owns connection setup (including a startup ping), and
@@ -58,7 +62,18 @@ does not use them and never writes a fake publication record. Its terminal
 editorial state is `READY_TO_PUBLISH`, which is distinct from a future
 `PUBLISHED` state.
 
-Migrations 005–006 add the separate `content_drafts` experiment table. A draft
-is always `human_review_required`; review is recorded as `PENDING`, `APPROVED`,
-`APPROVED_WITH_NOTES`, or `REJECTED`, with optional human notes. This is not a
-publisher state and does not call VK or mark a source item as published.
+Migrations 005–007 add the separate `content_drafts` experiment table and its
+minimal persisted review boundary. A draft starts as `PENDING` and may move
+once to `APPROVED` or `REJECTED`. Approval records its actor, timestamp, and a
+SHA-256 hash of the exact `post_text` bytes; future publication must verify the
+current hash against that approved hash. Historical experiment verdicts without
+this audit evidence are reset to fail-safe `PENDING` by migration 007 while
+their optional notes remain available. This is not a publisher state and does
+not call VK or mark a source item as published.
+
+Migration 008 records only confirmed human-review notification delivery on the
+same draft: timestamp, Telegram delivery channel, and external message ID.
+`PENDING` remains a review state, not a delivery state. A later retry skips a
+row with this evidence; a transport error leaves it eligible. The unavoidable
+send-success/DB-write-failure window is at-least-once delivery, not an
+exactly-once guarantee.

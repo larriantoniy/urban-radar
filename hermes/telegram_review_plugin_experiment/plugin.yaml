@@ -1,0 +1,4 @@
+name: urban-radar-telegram-review-experiment
+version: 0.1.0
+description: Local deterministic Telegram review callback contract experiment.
+kind: standalone

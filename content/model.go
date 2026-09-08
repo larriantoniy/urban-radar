@@ -36,6 +36,7 @@ type ReadyEvent struct {
 }
 
 type Draft struct {
+	ContentDraftID      int64           `json:"content_draft_id"`
 	Source              string          `json:"source"`
 	SourceItemID        string          `json:"source_item_id"`
 	SchemaVersion       string          `json:"schema_version"`
@@ -53,6 +54,15 @@ type Draft struct {
 	FactWarnings        []string        `json:"fact_warnings"`
 	HumanReviewRequired bool            `json:"human_review_required"`
 	HumanReviewStatus   string          `json:"human_review_status"`
+	HumanReviewNotes    string          `json:"human_review_notes,omitempty"`
+	ApprovedAt          *time.Time      `json:"approved_at,omitempty"`
+	ApprovedBy          string          `json:"approved_by,omitempty"`
+	ApprovedContentHash string          `json:"approved_content_hash,omitempty"`
+	RejectedAt          *time.Time      `json:"rejected_at,omitempty"`
+	RejectedBy          string          `json:"rejected_by,omitempty"`
+	ReviewNotifiedAt    *time.Time      `json:"review_notified_at,omitempty"`
+	ReviewChannel       string          `json:"review_notification_channel,omitempty"`
+	ReviewExternalID    string          `json:"review_notification_external_id,omitempty"`
 	SourceInputHash     string          `json:"source_input_hash"`
 	EditorPolicyID      string          `json:"editor_policy_id"`
 	EditorInputHash     string          `json:"editor_input_hash"`
