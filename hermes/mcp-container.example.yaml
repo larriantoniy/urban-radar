@@ -1,0 +1,20 @@
+# Merge these entries into the operator-owned HERMES_HOME/config.yaml inside
+# /opt/urban-radar/hermes. Credentials remain in that HERMES_HOME, never here.
+mcp_servers:
+  urban-radar-tgl:
+    command: /usr/local/bin/tgl-mcp
+    timeout: 30
+    connect_timeout: 15
+    tools:
+      include: ["tgl_list_news", "tgl_get_news"]
+
+  urban-radar-zakupki:
+    command: /usr/local/bin/zakupki-mcp
+    timeout: 60
+    connect_timeout: 20
+    tools:
+      include:
+        - get_procurement
+        - list_procurement_documents
+        - get_procurement_document
+        - get_procurement_attachment

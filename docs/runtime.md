@@ -205,74 +205,168 @@ perform cross-source semantic deduplication, or provide Research for TGL. A
 future Telegram command `проверь новости` should be a thin adapter calling the
 same `NewsCheckRunner`; it must not duplicate business logic.
 
-## Ubuntu daily cron operation
+## Ubuntu Docker Compose daily operation
 
-The runtime stays a normal CLI. Ubuntu cron starts the same production binary;
-there is no scheduler, worker, or daemon in Go:
+Urban Radar remains a one-shot CLI. The operating system, not Go and not a
+container scheduler, owns scheduling and overlap prevention:
 
 ```text
-cron → flock → /opt/urban-radar/bin/urban-radar news check → PostgreSQL
+Ubuntu cron → host wrapper → flock -n → docker compose run --rm urban-radar news check
+                                      → Hermes / configured MCP tools → PostgreSQL
 ```
 
-Build and install a release as the deployment user (example layout):
+Cron runs on the Ubuntu host. `postgres` is the only long-running Compose
+service; `urban-radar` is created for one CLI invocation and removed after it
+exits. PostgreSQL is private to the Compose network and persists in the named
+`postgres_data` volume.
+
+### Install Docker and deploy
+
+The following is a clean Ubuntu VPS procedure. It uses Docker's official apt
+repository; run it as an administrator and review the desired repository
+revision before building.
 
 ```sh
-sudo install -d -o urban-radar -g urban-radar /opt/urban-radar/{bin,logs,run}
-sudo -u urban-radar git -C /srv/urban-radar pull --ff-only
-sudo -u urban-radar sh -c 'cd /srv/urban-radar && go build -o /opt/urban-radar/bin/urban-radar ./cmd/urban-radar'
-sudo -u urban-radar sh -c 'cd /srv/urban-radar && go build -o /opt/urban-radar/bin/tgl-mcp ./cmd/tgl-mcp'
-sudo -u urban-radar sh -c 'cd /srv/urban-radar && go build -o /opt/urban-radar/bin/zakupki-mcp ./cmd/zakupki-mcp'
+sudo apt update
+sudo apt install -y ca-certificates curl git
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo \"${UBUNTU_CODENAME:-$VERSION_CODENAME}\") stable" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo docker version
+sudo docker compose version
+
+sudo useradd --system --create-home --home-dir /home/urban-radar --shell /usr/sbin/nologin urban-radar || true
+sudo usermod -aG docker urban-radar
+sudo install -d -o urban-radar -g urban-radar /srv /opt/urban-radar/{bin,hermes,logs,run,secrets}
+sudo -u urban-radar git clone <REPOSITORY_URL> /srv/urban-radar
+sudo -u urban-radar git -C /srv/urban-radar checkout <VALIDATED_COMMIT>
 sudo install -m 700 -o urban-radar -g urban-radar /srv/urban-radar/scripts/run-news-check.sh /opt/urban-radar/bin/run-news-check
 sudo -u urban-radar cp /srv/urban-radar/.env.example /opt/urban-radar/.env
 sudo chmod 600 /opt/urban-radar/.env
 ```
 
-Edit `/opt/urban-radar/.env` with `DATABASE_URL` and
-`ZAKUPKI_SEARCH_URL`; set `ZAKUPKI_CA_FILE` only when the host needs the
-external CA bundle. Set `URBAN_RADAR_HOME` to the deployment user's home and
-make sure `PATH` includes the `hermes` executable. Hermes reads its own model,
-provider, and MCP configuration from that same user's configuration; Go does
-not read an OpenRouter key itself. Do not commit the env file, CA bundle, or
-Hermes user configuration.
+Log in again as `urban-radar` (or otherwise refresh its Docker group
+membership) before running Docker commands. The deployment layout is:
 
-For production, configure that user's Hermes MCP entries with absolute binary
-paths rather than `go run`, while retaining the existing tool allowlists:
-
-```yaml
-urban-radar-tgl:
-  command: /opt/urban-radar/bin/tgl-mcp
-urban-radar-zakupki:
-  command: /opt/urban-radar/bin/zakupki-mcp
+```text
+/srv/urban-radar/                 # Git checkout: Dockerfile and compose.yaml
+/opt/urban-radar/.env             # owner-readable Compose values
+/opt/urban-radar/bin/run-news-check
+/opt/urban-radar/hermes/          # Hermes config, auth and state; not Git
+/opt/urban-radar/logs/news-check.log
+/opt/urban-radar/run/news-check.lock
+/opt/urban-radar/secrets/         # optional externally obtained EIS CA
 ```
 
-The source-backed `hermes/tgl-mcp.example.yaml` remains a development example.
+There are no host Urban Radar, TGL MCP, or Zakupki MCP binaries in this layout:
+the image contains `/usr/local/bin/urban-radar`, `/usr/local/bin/tgl-mcp`, and
+`/usr/local/bin/zakupki-mcp`. The image contains the exact pinned Hermes Agent
+revision declared by `Dockerfile`, Python, CA certificates, the three compiled
+binaries, and the four runtime policy prompt files. It does not contain Go,
+Git, the checkout, provider credentials, `.env`, certificates, or API keys.
 
-The wrapper takes a non-blocking `flock` at
-`/opt/urban-radar/run/news-check.lock`; a concurrent invocation exits `75`
-without touching PostgreSQL. It appends stdout and stderr to
-`/opt/urban-radar/logs/news-check.log`. A successful CLI execution returns
-`0`; runtime/bootstrap failures propagate a non-zero code. Item-level
-retryable errors may still yield a normal process exit when the NewsCheck
-summary is `PARTIAL`.
+### Environment, Hermes and optional EIS CA
 
-Example daily schedule at 20:30 Samara server local time (confirm the server
-timezone with `timedatectl` first; otherwise set `CRON_TZ=Europe/Samara`):
+Edit `/opt/urban-radar/.env` from `.env.example`. Required values are
+`POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, a URL-escaped
+`DATABASE_URL` whose host is `postgres` and port is `5432`,
+`ZAKUPKI_SEARCH_URL`, and `HERMES_HOME_HOST_DIR`. Do not put the database URL
+or any provider credential in cron or Compose source files.
+
+Hermes owns model/provider selection, provider authentication and MCP settings;
+Go does not read an OpenRouter key itself. Set
+`HERMES_HOME_HOST_DIR=/opt/urban-radar/hermes`, keep that directory mode 700
+and owned by the deployment user, and configure its `config.yaml` with the
+container-path MCP commands in
+[`hermes/mcp-container.example.yaml`](../hermes/mcp-container.example.yaml).
+Hermes credentials remain inside that operator-owned directory and are mounted
+only into the application container as `HERMES_HOME=/var/lib/hermes`.
+
+If EIS requires an external CA, place it at
+`/opt/urban-radar/secrets/Russian_Trusted_CA.pem`, mode 600, and set:
+
+```sh
+ZAKUPKI_CA_HOST_PATH='/opt/urban-radar/secrets/Russian_Trusted_CA.pem'
+ZAKUPKI_CA_FILE='/run/secrets/Russian_Trusted_CA.pem'
+```
+
+Otherwise leave both variables empty. The CA is a read-only mount and is never
+copied into the image or Git.
+
+### Database, migrations and first controlled run
+
+Build the image and start only PostgreSQL:
+
+```sh
+sudo -u urban-radar docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml build
+sudo -u urban-radar docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml up -d postgres
+sudo -u urban-radar docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml ps
+```
+
+Apply migrations explicitly in filename order. They are not applied during an
+application start, and migration rollback is not automatic:
+
+```sh
+sudo -u urban-radar sh -c '
+  set -eu
+  set -a; . /opt/urban-radar/.env; set +a
+  for migration in /srv/urban-radar/migrations/*.sql; do
+    docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml exec -T postgres \
+      psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$migration"
+  done
+'
+```
+
+Manually run the same wrapper that cron will use, then inspect its log, the
+latest persisted run and source checkpoints. Do this once before installing
+cron:
+
+```sh
+sudo -u urban-radar /opt/urban-radar/bin/run-news-check
+tail -n 200 /opt/urban-radar/logs/news-check.log
+sudo -u urban-radar sh -c 'set -a; . /opt/urban-radar/.env; set +a; docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT run_id,status,started_at,finished_at FROM news_check_runs ORDER BY started_at DESC LIMIT 1;"'
+sudo -u urban-radar sh -c 'set -a; . /opt/urban-radar/.env; set +a; docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT source,last_successful_collection_at FROM source_checkpoints ORDER BY source;"'
+```
+
+The wrapper takes the host-side non-blocking lock
+`/opt/urban-radar/run/news-check.lock`. A competing manual or cron invocation
+exits 75 before it starts a container or touches PostgreSQL. It appends both
+container stdout and stderr to `/opt/urban-radar/logs/news-check.log`; inspect
+it with `tail -n 200 /opt/urban-radar/logs/news-check.log`. Successful CLI
+execution exits 0. Runtime/bootstrap failures propagate non-zero status;
+item-level retryable errors may still result in a normal CLI exit when the
+persisted NewsCheck summary is `PARTIAL`.
+
+### Cron, backup, upgrade and rollback
+
+Confirm the server timezone with `timedatectl`, then add this *host* crontab
+entry for the deployment user; it contains no secrets and never runs inside a
+container:
 
 ```cron
 CRON_TZ=Europe/Samara
 30 20 * * * /opt/urban-radar/bin/run-news-check
 ```
 
-Manual operations use the same wrapper, so they respect the lock:
+Use the same wrapper for a safe manual run. To pause scheduling, comment out
+that line with `crontab -e`; do not delete checkpoints or runtime state.
+
+Take a manual PostgreSQL backup before an upgrade:
 
 ```sh
-sudo -u urban-radar /opt/urban-radar/bin/run-news-check
-tail -n 200 /opt/urban-radar/logs/news-check.log
-sudo -u postgres psql urban_radar -c 'SELECT run_id,status,started_at,finished_at FROM news_check_runs ORDER BY started_at DESC LIMIT 1;'
+sudo -u urban-radar sh -c 'set -a; . /opt/urban-radar/.env; set +a; docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > urban-radar-$(date +%F).dump
 ```
 
-To temporarily disable scheduling, comment out the crontab line with
-`crontab -e` for the deployment user; do not delete checkpoints or runtime
-state. Before unattended use, ensure the deployment's Hermes/provider security
-policy permits the configured model calls for this command. The wrapper does
-not bypass an interactive or host-level permission guard.
+To upgrade, check out the intended commit in `/srv/urban-radar`, build it,
+apply any new forward-only migrations explicitly, then validate one manual
+wrapper run before restoring cron operation. To roll back application code,
+check out the previous known-good commit and rebuild the image. Database
+migrations are not rolled back automatically; restore a compatible database
+backup only through a deliberate recovery procedure.
+
+The wrapper does not bypass Hermes/provider permission guards. Unattended cron
+is viable only after the deployment's Hermes configuration has an operator-
+approved non-interactive authorization policy for the exact NewsCheck calls.

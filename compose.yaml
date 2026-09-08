@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  urban-radar:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
+      ZAKUPKI_SEARCH_URL: ${ZAKUPKI_SEARCH_URL:?ZAKUPKI_SEARCH_URL must be set}
+      ZAKUPKI_CA_FILE: ${ZAKUPKI_CA_FILE:-}
+      HERMES_HOME: /var/lib/hermes
+      HOME: /home/urban-radar
+      TMPDIR: /tmp
+    read_only: true
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    volumes:
+      - type: bind
+        source: ${HERMES_HOME_HOST_DIR:?HERMES_HOME_HOST_DIR must be set}
+        target: /var/lib/hermes
+      - type: bind
+        source: ${ZAKUPKI_CA_HOST_PATH:-/dev/null}
+        target: /run/secrets/Russian_Trusted_CA.pem
+        read_only: true
+
+volumes:
+  postgres_data:
