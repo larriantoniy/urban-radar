@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -37,6 +38,14 @@ func main() {
 	}
 	if len(os.Args) >= 3 && os.Args[1] == "content" && os.Args[2] == "review-notify" {
 		contentReviewNotify(os.Args[3:])
+		return
+	}
+	if len(os.Args) >= 3 && os.Args[1] == "media" && os.Args[2] == "attach" {
+		mediaAttach(os.Args[3:])
+		return
+	}
+	if len(os.Args) >= 3 && os.Args[1] == "media" && os.Args[2] == "cleanup" {
+		mediaCleanup(os.Args[3:])
 		return
 	}
 	if len(os.Args) < 3 || os.Args[1] != "tgl" {
@@ -281,7 +290,61 @@ func writeSummary(summary newscheck.Summary, err error) {
 }
 
 func usage() string {
-	return "usage: urban-radar tgl list | urban-radar tgl get <url> | urban-radar news check [--preflight] [flags] | urban-radar content experiment-v1 [--item source/source_item_id] [flags] | urban-radar content review approve|reject <draft-id> --actor <actor> | urban-radar content review-notify [--draft-id <id>]"
+	return "usage: urban-radar tgl list | urban-radar tgl get <url> | urban-radar news check [--preflight] [flags] | urban-radar content experiment-v1 [--item source/source_item_id] [flags] | urban-radar content review approve|reject <draft-id> --actor <actor> | urban-radar content review-notify [--draft-id <id>] | urban-radar media attach <draft-id> --actor <actor> | urban-radar media cleanup [--dry-run]"
+}
+
+func mediaAttach(args []string) {
+	if len(args) < 1 {
+		fail("usage: urban-radar media attach <draft-id> --actor <actor>")
+	}
+	id, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil || id <= 0 {
+		fail("draft-id must be a positive int64")
+	}
+	f := flag.NewFlagSet("media attach", flag.ContinueOnError)
+	actor := f.String("actor", "", "actor")
+	if err = f.Parse(args[1:]); err != nil || f.NArg() != 0 || strings.TrimSpace(*actor) == "" {
+		fail("usage: urban-radar media attach <draft-id> --actor <actor>")
+	}
+	data, err := io.ReadAll(io.LimitReader(os.Stdin, 20<<20))
+	if err != nil || len(data) == 0 {
+		fail("read image bytes")
+	}
+	u, err := storage.DatabaseURLFromEnv()
+	if err != nil {
+		fail(err.Error())
+	}
+	db, err := storage.OpenPostgres(context.Background(), u)
+	if err != nil {
+		fail(err.Error())
+	}
+	defer db.Close()
+	m, err := content.SaveImage(context.Background(), storage.NewPostgresStore(db), content.MediaRootFromEnv(), id, data, *actor, time.Now().UTC())
+	if err != nil {
+		fail(err.Error())
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"result": "ATTACHED", "draft_id": id, "storage_path": m.StoragePath, "sha256": m.SHA256})
+}
+func mediaCleanup(args []string) {
+	f := flag.NewFlagSet("media cleanup", flag.ContinueOnError)
+	dry := f.Bool("dry-run", false, "report only")
+	if err := f.Parse(args); err != nil || f.NArg() != 0 {
+		fail("usage: urban-radar media cleanup [--dry-run]")
+	}
+	u, err := storage.DatabaseURLFromEnv()
+	if err != nil {
+		fail(err.Error())
+	}
+	db, err := storage.OpenPostgres(context.Background(), u)
+	if err != nil {
+		fail(err.Error())
+	}
+	defer db.Close()
+	n, err := storage.NewPostgresStore(db).CleanupRejectedMedia(context.Background(), time.Now().UTC().Add(-7*24*time.Hour), *dry)
+	if err != nil {
+		fail(err.Error())
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"count": n, "dry_run": *dry})
 }
 
 func fail(message string) { fmt.Fprintln(os.Stderr, "urban-radar:", message); os.Exit(1) }

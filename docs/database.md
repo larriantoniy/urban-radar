@@ -17,6 +17,7 @@ migrations/005_content_drafts.sql
 migrations/006_content_draft_review_notes.sql
 migrations/007_content_draft_persisted_review.sql
 migrations/008_content_draft_review_notifications.sql
+migrations/009_content_media.sql
 ```
 
 The application-level persistence ports live beside `runtime/` and
@@ -39,6 +40,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/005_content_drafts.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/006_content_draft_review_notes.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/007_content_draft_persisted_review.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/008_content_draft_review_notifications.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/009_content_media.sql
 ```
 
 `storage.OpenPostgres` owns connection setup (including a startup ping), and

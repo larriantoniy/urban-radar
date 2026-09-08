@@ -91,10 +91,11 @@ class NotificationSenderTests(unittest.TestCase):
         sent = FakeBot.sent[0]
         self.assertEqual(sent["chat_id"], "1001")
         self.assertEqual(sent["text"], self.request().text)
-        buttons = sent["reply_markup"].inline_keyboard[0]
+        buttons = [button for row in sent["reply_markup"].inline_keyboard for button in row]
         self.assertEqual([(button.text, button.callback_data) for button in buttons], [
             ("✅ Опубликовать", "ur:approve:42"),
             ("❌ Отклонить", "ur:reject:42"),
+            ("📷 Добавить фото", "ur:attach:42"),
         ])
 
     def test_invalid_callback_contract_and_missing_home_channel_fail_before_send(self) -> None:

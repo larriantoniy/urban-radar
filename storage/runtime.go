@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"urban-radar/content"
@@ -27,6 +29,70 @@ var _ newscheck.Store = (*PostgresStore)(nil)
 var _ content.Store = (*PostgresStore)(nil)
 var _ content.ReviewStore = (*PostgresStore)(nil)
 var _ content.ReviewNotificationStore = (*PostgresStore)(nil)
+var _ content.MediaStore = (*PostgresStore)(nil)
+
+func (r *PostgresStore) AttachMedia(ctx context.Context, draftID int64, media content.Media) (content.Media, *content.Media, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return content.Media{}, nil, err
+	}
+	defer tx.Rollback()
+	var status string
+	if err = tx.QueryRowContext(ctx, `SELECT human_review_status FROM content_drafts WHERE content_draft_id=$1 FOR UPDATE`, draftID).Scan(&status); errors.Is(err, sql.ErrNoRows) {
+		return content.Media{}, nil, content.ErrMediaDraftNotFound
+	} else if err != nil {
+		return content.Media{}, nil, err
+	}
+	if status != content.ReviewStatusPending {
+		return content.Media{}, nil, content.ErrMediaFinalized
+	}
+	var old content.Media
+	var oldUploaded, oldDeleted sql.NullTime
+	err = tx.QueryRowContext(ctx, `SELECT id,content_draft_id,storage_path,sha256,uploaded_at,uploaded_by,deleted_at FROM content_media WHERE content_draft_id=$1 AND deleted_at IS NULL`, draftID).Scan(&old.ID, &old.ContentDraftID, &old.StoragePath, &old.SHA256, &oldUploaded, &old.UploadedBy, &oldDeleted)
+	if err == nil {
+		old.UploadedAt = &oldUploaded.Time
+		if oldDeleted.Valid {
+			old.DeletedAt = &oldDeleted.Time
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return content.Media{}, nil, err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO content_media(content_draft_id,storage_path,sha256,uploaded_at,uploaded_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(content_draft_id) DO UPDATE SET storage_path=EXCLUDED.storage_path,sha256=EXCLUDED.sha256,uploaded_at=EXCLUDED.uploaded_at,uploaded_by=EXCLUDED.uploaded_by,deleted_at=NULL`, draftID, media.StoragePath, media.SHA256, media.UploadedAt, media.UploadedBy)
+	if err != nil {
+		return content.Media{}, nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return content.Media{}, nil, err
+	}
+	if old.ID != 0 {
+		return media, &old, nil
+	}
+	return media, nil, nil
+}
+
+func (r *PostgresStore) CleanupRejectedMedia(ctx context.Context, cutoff time.Time, dryRun bool) (int, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT cm.id,cm.storage_path FROM content_media cm JOIN content_drafts d ON d.content_draft_id=cm.content_draft_id WHERE d.human_review_status='REJECTED' AND d.rejected_at <= $1 AND cm.deleted_at IS NULL`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	count := 0
+	for rows.Next() {
+		var id int64
+		var path string
+		if err = rows.Scan(&id, &path); err != nil {
+			return count, err
+		}
+		count++
+		if !dryRun {
+			_ = os.Remove(filepath.Join(content.MediaRootFromEnv(), path))
+			if _, err = r.db.ExecContext(ctx, `UPDATE content_media SET deleted_at=now() WHERE id=$1 AND deleted_at IS NULL`, id); err != nil {
+				return count, err
+			}
+		}
+	}
+	return count, rows.Err()
+}
 
 func (r *PostgresStore) Get(ctx context.Context, sourceName, sourceItemID string) (urruntime.ItemRecord, error) {
 	row := r.db.QueryRowContext(ctx, runtimeSelect+` WHERE source=$1 AND source_item_id=$2`, sourceName, sourceItemID)

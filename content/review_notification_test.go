@@ -63,7 +63,7 @@ func TestBuildReviewNotificationUsesExactDraftAndCallbackContract(t *testing.T) 
 		t.Fatal(err)
 	}
 	want := "Новый пост готов\n\nГородское изменение\n\nИсточник: example.test\nhttps://example.test/source"
-	if notification.Text != want || notification.ApproveCallbackData != "ur:approve:42" || notification.RejectCallbackData != "ur:reject:42" {
+	if notification.Text != want || notification.ApproveCallbackData != "ur:approve:42" || notification.RejectCallbackData != "ur:reject:42" || notification.AttachCallbackData != "ur:attach:42" {
 		t.Fatalf("notification=%+v", notification)
 	}
 	if strings.Count(notification.Text, notification.SourceURL) != 1 || strings.Count(notification.Text, "Источник:") != 1 {

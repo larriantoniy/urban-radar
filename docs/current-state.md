@@ -33,6 +33,26 @@ See [database.md](database.md) for persisted review and notification fields, and
 
 ## Current Review & Publish state
 
+Manual Media Attach V0 uses `content_drafts 1 → 0..1 content_media`:
+`content_drafts` is content plus human review, `content_media` is its attached
+local media artifact, and `publications` remains the later owner of external
+side effects. DB metadata is durable; the local file is disposable; cleanup is
+driven by DB state.
+
+The completed V0 contract is:
+
+```text
+Telegram review → manual JPEG/PNG attach → persistent local media
+→ content_media → human Approve/Reject
+```
+
+After human approval, `post_text` and attached media are immutable for the
+publication pipeline. No LLM, Content, or Publisher stage may rewrite approved
+text or replace approved media; any approved-payload change requires new human
+review. The current approval hash covers text only. Binding approved media
+metadata/hash into the Publisher V0 eligibility check is its first prerequisite,
+not an ad-hoc change in this milestone.
+
 `content_drafts` supports the fail-closed review lifecycle:
 
 ```text

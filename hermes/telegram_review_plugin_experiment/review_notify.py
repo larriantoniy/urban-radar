@@ -26,6 +26,7 @@ class NotificationRequest:
     source_url: str
     approve_callback_data: str
     reject_callback_data: str
+    attach_callback_data: str
 
 
 class NotificationConfigurationError(RuntimeError):
@@ -40,17 +41,18 @@ def parse_notification_request(value: object) -> NotificationRequest:
     source_url = value.get("source_url")
     approve = value.get("approve_callback_data")
     reject = value.get("reject_callback_data")
+    attach = value.get("attach_callback_data", f"ur:attach:{draft_id}")
     if isinstance(draft_id, bool) or not isinstance(draft_id, int) or draft_id <= 0:
         raise ValueError("content_draft_id must be a positive integer")
-    if not all(isinstance(field, str) and field for field in (text, source_url, approve, reject)):
+    if not all(isinstance(field, str) and field for field in (text, source_url, approve, reject, attach)):
         raise ValueError("notification text, source URL, and callback data are required")
-    if not approve == f"ur:approve:{draft_id}" or not reject == f"ur:reject:{draft_id}":
+    if not approve == f"ur:approve:{draft_id}" or not reject == f"ur:reject:{draft_id}" or not attach == f"ur:attach:{draft_id}":
         raise ValueError("callback data does not match the Urban Radar contract")
-    if len(approve.encode("utf-8")) > MAX_CALLBACK_DATA_BYTES or len(reject.encode("utf-8")) > MAX_CALLBACK_DATA_BYTES:
+    if any(len(value.encode("utf-8")) > MAX_CALLBACK_DATA_BYTES for value in (approve, reject, attach)):
         raise ValueError("callback data exceeds Telegram limit")
     if len(text.encode("utf-16-le")) // 2 > MAX_TEXT_UTF16_UNITS:
         raise ValueError("notification text exceeds Telegram limit")
-    return NotificationRequest(draft_id, text, source_url, approve, reject)
+    return NotificationRequest(draft_id, text, source_url, approve, reject, attach)
 
 
 async def send_review_notification(
@@ -86,7 +88,7 @@ async def send_review_notification(
             [[
                 InlineKeyboardButton("✅ Опубликовать", callback_data=request.approve_callback_data),
                 InlineKeyboardButton("❌ Отклонить", callback_data=request.reject_callback_data),
-            ]]
+            ], [InlineKeyboardButton("📷 Добавить фото", callback_data=request.attach_callback_data)]]
         ),
     }
     if getattr(home, "thread_id", None):

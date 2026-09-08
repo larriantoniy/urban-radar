@@ -29,6 +29,7 @@ services:
       HERMES_HOME: /var/lib/hermes
       HOME: /home/urban-radar
       TMPDIR: /tmp
+      URBAN_RADAR_MEDIA_DIR: /var/lib/urban-radar/media
     read_only: true
     restart: "no"
     security_opt:
@@ -43,6 +44,9 @@ services:
         source: ${ZAKUPKI_CA_HOST_PATH:-/dev/null}
         target: /run/secrets/Russian_Trusted_CA.pem
         read_only: true
+      - type: bind
+        source: ${URBAN_RADAR_MEDIA_HOST_DIR:?URBAN_RADAR_MEDIA_HOST_DIR must be set}
+        target: /var/lib/urban-radar/media
 
 volumes:
   postgres_data:

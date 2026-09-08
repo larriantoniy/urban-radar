@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import subprocess
+import time
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -21,7 +22,9 @@ CALLBACK_PATTERN = r"^ur:"
 MAX_CALLBACK_DATA_BYTES = 64
 MAX_DRAFT_ID_DIGITS = 19
 _DRAFT_ID_RE = re.compile(r"^[1-9][0-9]{0,18}$")
-_ACTIONS = frozenset({"approve", "reject"})
+_ACTIONS = frozenset({"approve", "reject", "attach"})
+_MAX_PENDING_ATTACHMENTS = 128
+_PENDING_ATTACHMENT_SECONDS = 15 * 60
 _FINAL_STATUS_LINES = frozenset({
     "✅ Одобрено",
     "❌ Отклонено",
@@ -38,6 +41,8 @@ class ReviewAction(Protocol):
     def approve(self, draft_id: int, actor: str) -> object: ...
 
     def reject(self, draft_id: int, actor: str) -> object: ...
+
+    def attach(self, draft_id: int, actor: str, image: bytes) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -106,6 +111,17 @@ class CLIReviewAction:
             raise ReviewBridgeError("Urban Radar review command confirmed the wrong draft or state")
         return ReviewBridgeResult(payload["result"], draft_id, expected_state)
 
+    def attach(self, draft_id: int, actor: str, image: bytes) -> None:
+        completed = self.runner([self.command, "media", "attach", str(draft_id), "--actor", actor], input=image, capture_output=True, check=False)
+        if completed.returncode != 0:
+            raise ReviewBridgeError("Urban Radar media command did not confirm attachment")
+        try:
+            payload = json.loads(completed.stdout)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ReviewBridgeError("Urban Radar media command returned malformed JSON") from exc
+        if not isinstance(payload, dict) or payload.get("result") != "ATTACHED" or payload.get("draft_id") != draft_id:
+            raise ReviewBridgeError("Urban Radar media command confirmed the wrong draft")
+
 
 class CapturingReviewAction:
     """Preserve the bool callback contract while retaining CLI result for UX."""
@@ -144,7 +160,7 @@ def preflight_review_runtime(environ: dict[str, str] | None = None) -> str:
 
 
 def parse_callback_data(data: object) -> ParsedCallback | None:
-    """Accept only ``ur:approve:<content_draft_id>`` or reject equivalent.
+    """Accept only a supported exact ``ur:<action>:<content_draft_id>`` token.
 
     A positive signed-64-bit draft ID is compact, exact, and contains no draft
     text or secret. Its decimal representation fits Telegram's 64-byte limit.
@@ -210,9 +226,11 @@ async def handle_callback_query(query: object, adapter: object, action: ReviewAc
     ):
         return False
 
+    if parsed.action == "attach":
+        return False
     if parsed.action == "approve":
         action.approve(parsed.draft_id, f"telegram:{user_id}")
-    else:
+    elif parsed.action == "reject":
         action.reject(parsed.draft_id, f"telegram:{user_id}")
     return True
 
@@ -281,10 +299,31 @@ def _success_message(action: str, result: object | None) -> str:
 def build_telegram_handler(action: ReviewAction):
     """Return a pinned-Hermes PTB handler factory for the ``ur:`` namespace."""
 
+    pending: dict[tuple[str, object, object, object], tuple[int, float]] = {}
+
+    def authorized(query: object) -> tuple[str, tuple[str, object, object, object]] | None:
+        user_id = _callback_user_id(query); message=getattr(query,"message",None); chat=getattr(message,"chat",None)
+        if user_id is None: return None
+        key=(user_id,getattr(message,"chat_id",None),getattr(message,"message_thread_id",None),getattr(message,"message_id",None))
+        checker=getattr(adapter,"_is_callback_user_authorized",None)
+        if not callable(checker) or not checker(user_id,chat_id=key[1],chat_type=getattr(chat,"type",None),thread_id=key[2],user_name=getattr(getattr(query,"from_user",None),"first_name",None)): return None
+        return user_id,key
+
     async def on_callback(update, context) -> None:
         del context
         query = getattr(update, "callback_query", None)
         parsed = parse_callback_data(getattr(query, "data", None))
+        if parsed and parsed.action == "attach":
+            identity=authorized(query)
+            if identity is None: await _answer_callback(query,"Действие недоступно.",show_alert=True); return
+            now = time.monotonic()
+            for key, (_, deadline) in list(pending.items()):
+                if deadline <= now: pending.pop(key, None)
+            if len(pending) >= _MAX_PENDING_ATTACHMENTS and identity[1] not in pending:
+                await _answer_callback(query,"Слишком много ожидающих загрузок. Повторите позже.",show_alert=True); return
+            pending[identity[1]]=(parsed.draft_id, now + _PENDING_ATTACHMENT_SECONDS)
+            await _answer_callback(query,"Отправьте одно фото ответом на эту карточку.",show_alert=False)
+            return
         captured_action = CapturingReviewAction(action)
         try:
             handled = await handle_callback_query(query, adapter, captured_action)
@@ -306,6 +345,37 @@ def build_telegram_handler(action: ReviewAction):
         from telegram.ext import CallbackQueryHandler
 
         application.add_handler(CallbackQueryHandler(on_callback, pattern=CALLBACK_PATTERN))
+
+        try:
+            from telegram.ext import MessageHandler, filters
+        except ImportError:
+            # Minimal no-network callback contract doubles intentionally expose
+            # only CallbackQueryHandler.
+            return
+
+        async def on_photo(update, context) -> None:
+            del context
+            message=getattr(update,"effective_message",None); reply=getattr(message,"reply_to_message",None); sender=getattr(message,"from_user",None)
+            user_id=str(getattr(sender,"id","")).strip(); key=(user_id,getattr(reply,"chat_id",None),getattr(reply,"message_thread_id",None),getattr(reply,"message_id",None))
+            entry=pending.get(key)
+            if not entry or entry[1] <= time.monotonic():
+                pending.pop(key, None)
+                return
+            draft_id=entry[0]
+            checker=getattr(adapter,"_is_callback_user_authorized",None); chat=getattr(message,"chat",None)
+            if not callable(checker) or not checker(user_id,chat_id=key[1],chat_type=getattr(chat,"type",None),thread_id=key[2],user_name=getattr(sender,"first_name",None)): return
+            photos=getattr(message,"photo",None)
+            if not photos: return
+            try:
+                file=await photos[-1].get_file(); image=bytes(await file.download_as_bytearray()); getattr(action,"attach")(draft_id,f"telegram:{user_id}",image)
+                pending.pop(key,None)
+                text=getattr(reply,"text","")
+                if "📷 Фото прикреплено" not in text: await reply.edit_text(text=text+"\n\n📷 Фото прикреплено",reply_markup=getattr(reply,"reply_markup",None))
+            except Exception:
+                logger.exception("Urban Radar media attachment failed")
+                reply_fn=getattr(message,"reply_text",None)
+                if callable(reply_fn): await reply_fn("Не удалось сохранить фото. Повторите позже.")
+        application.add_handler(MessageHandler(filters.PHOTO & filters.REPLY, on_photo))
 
     adapter = None
     return wire

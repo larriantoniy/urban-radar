@@ -22,6 +22,7 @@ type ReviewNotification struct {
 	SourceURL           string `json:"source_url"`
 	ApproveCallbackData string `json:"approve_callback_data"`
 	RejectCallbackData  string `json:"reject_callback_data"`
+	AttachCallbackData  string `json:"attach_callback_data"`
 }
 
 type ReviewNotificationDelivery struct {
@@ -97,6 +98,7 @@ func BuildReviewNotification(draft Draft) (ReviewNotification, error) {
 	}
 	approve := "ur:approve:" + strconv.FormatInt(draft.ContentDraftID, 10)
 	reject := "ur:reject:" + strconv.FormatInt(draft.ContentDraftID, 10)
+	attach := "ur:attach:" + strconv.FormatInt(draft.ContentDraftID, 10)
 	if len(approve) > 64 || len(reject) > 64 {
 		return ReviewNotification{}, ErrInvalidReviewNotification
 	}
@@ -110,5 +112,6 @@ func BuildReviewNotification(draft Draft) (ReviewNotification, error) {
 		SourceURL:           draft.SourceURL,
 		ApproveCallbackData: approve,
 		RejectCallbackData:  reject,
+		AttachCallbackData:  attach,
 	}, nil
 }

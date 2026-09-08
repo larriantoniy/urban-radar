@@ -104,6 +104,13 @@ class CallbackContractTests(unittest.TestCase):
         self.assertTrue(handled)
         self.assertEqual(action.calls, [("reject", 29, "telegram:42")])
 
+    def test_attach_token_is_parsed_but_not_a_review_decision(self) -> None:
+        self.assertEqual(contract.parse_callback_data("ur:attach:29"), contract.ParsedCallback("attach", 29))
+        handled, action, adapter = self.invoke("ur:attach:29")
+        self.assertFalse(handled)
+        self.assertEqual(action.calls, [])
+        self.assertEqual(len(adapter.auth_calls), 1)
+
     def test_unauthorized_user_cannot_invoke_action(self) -> None:
         handled, action, adapter = self.invoke("ur:approve:19", authorized=False)
         self.assertFalse(handled)
