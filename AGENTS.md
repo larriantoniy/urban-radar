@@ -12,6 +12,10 @@
 - LLMs are for reasoning and content generation only.
 - Never use LLM interpretation for explicit human approval or critical publication side effects.
 - PostgreSQL authority takes precedence over agent memory or Hermes state.
+- No external publication side effect may occur unless the current approved
+  payload validates; no LLM transforms content after human approval.
+- Publication failures never roll back approval. Ambiguous final side effects
+  are never automatically retried and require explicit reconciliation.
 
 ## Change discipline
 

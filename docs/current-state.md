@@ -2,7 +2,12 @@
 
 ## Current pipeline
 
-Incremental NewsCheck collects public source items with persisted PostgreSQL checkpoints, then runs Discovery, Editor V1, and bounded Research V0.2 where required. Eligible events become `READY_TO_PUBLISH`; Content V1 creates a persisted `ContentDraft`.
+```text
+Source → Discovery → Editor → Content → Telegram Human Review
+→ APPROVED payload → Publisher V0
+```
+
+Telegram Approve does not invoke Publisher automatically.
 
 The current review path is deterministic:
 
@@ -46,12 +51,26 @@ Telegram review → manual JPEG/PNG attach → persistent local media
 → content_media → human Approve/Reject
 ```
 
+Publisher V0 is explicit operator-only CLI work: `Human Review →
+approved_payload_hash → ValidateApprovedPayload → local media SHA verification
+→ deterministic Publisher → external side effect`. No LLM stage exists after
+human approval.
+
+Approve/Reject work through Telegram. Manual JPEG/PNG attachment is available.
+Approved text and media are immutable; a change requires new human review.
+
+`APPROVED` is the human decision and is independent from publication outcome.
+`FAILED` means the system knows no final VK post was created; it may be retried
+explicitly. `RECOVERY_REQUIRED` means the system cannot prove whether final VK
+side effect happened and must never be automatically retried.
+It requires explicit human reconciliation; operator confirmation is authoritative
+for V0 and no automatic VK wall search occurs.
+
 After human approval, `post_text` and attached media are immutable for the
 publication pipeline. No LLM, Content, or Publisher stage may rewrite approved
 text or replace approved media; any approved-payload change requires new human
-review. The current approval hash covers text only. Binding approved media
-metadata/hash into the Publisher V0 eligibility check is its first prerequisite,
-not an ad-hoc change in this milestone.
+review. The text-level audit hash remains available alongside the payload hash
+used by the future Publisher eligibility gate.
 
 `content_drafts` supports the fail-closed review lifecycle:
 
@@ -60,7 +79,39 @@ PENDING → APPROVED
 PENDING → REJECTED
 ```
 
-Approval persists actor, timestamp, and a SHA-256 hash of the exact `post_text`. A future publisher must require both `APPROVED` and a current hash equal to `approved_content_hash`; an approval never authorizes changed content.
+Approval persists actor, timestamp, and two SHA-256 audit values.
+`approved_content_hash` is the existing text-level audit hash.
+`approved_payload_hash` is the publication eligibility boundary over canonical
+`post_text` plus active media SHA (or `null`). No external publication side
+effect may occur unless `current_payload_hash == approved_payload_hash`.
+Legacy APPROVED rows without `approved_payload_hash` fail closed; migration 010
+does not infer a retrospective approval.
+
+Publisher state is:
+
+```text
+PENDING → PUBLISHING → PUBLISHED
+PUBLISHING → FAILED
+PUBLISHING → RECOVERY_REQUIRED
+```
+
+`PUBLISHED` is idempotent; `FAILED` permits explicit retry; `PUBLISHING` fails
+closed; `RECOVERY_REQUIRED` prohibits normal retry and requires reconciliation.
+Before every VK side effect Publisher validates the approved payload, rereads
+current payload, and verifies local media bytes SHA. Validation failure makes
+zero VK calls. No LLM exists after approval. Definitive/pre-final failures are
+`FAILED`; ambiguous transport/read failure after final `wall.post` starts is
+`RECOVERY_REQUIRED`. Publication failure never rolls back approval.
+
+Reconciliation V0 is `RECOVERY_REQUIRED → MARK_PUBLISHED → PUBLISHED` or
+`RECOVERY_REQUIRED → MARK_NOT_PUBLISHED → FAILED`. Neither action calls VK.
+Operator confirmation is authoritative; normalized external ID plus
+`reconciled_at`/`reconciled_by` are persisted. Telegram reconciliation input is
+transient, bounded, and context-bound; PostgreSQL remains authority.
+
+Media cleanup is DB-timestamp driven, never filesystem mtime: active media is
+deleted after seven days for REJECTED drafts or PUBLISHED VK publications, while
+its metadata remains as audit history.
 
 Review notification delivery is separate from review status. Successful delivery persists notification time, channel, and Telegram external message ID. Ordinary replay skips a delivered draft; the current semantics are at-least-once because a crash after Telegram accepts a message but before the database mark can duplicate delivery.
 
@@ -92,7 +143,8 @@ item is `PUBLISHED` and no VK call has occurred.
 ## Known gaps
 
 - Automatic notification after NewsCheck is not wired.
-- VK Publisher, publication state, and autonomous publishing do not exist.
+- Telegram Approve → automatic Publisher bridge is not implemented.
+- Explicit Telegram retry after FAILED is not implemented.
 - Production deployment of the review path has not been performed.
 - Notification delivery is not exactly-once; there is no outbox or retry worker.
 
@@ -111,17 +163,14 @@ interactive shell. Current Compose has no long-running gateway service.
 - PostgreSQL as the authority for review state and publication eligibility.
 - Host cron + `flock` scheduling model; do not add a second scheduler.
 
-Publisher V0 is design-only: see [publisher-v0.md](publisher-v0.md). It must
-remain deterministic at the VK side-effect boundary and operate only on the
-exact approved content hash.
+Publisher V0 is deterministic and explicit-CLI only: see [publisher-v0.md](publisher-v0.md).
 
 ## Current milestone
 
-Review callback UX and gateway-owned deployment preflight are ready for the
-next controlled callback observation. Publisher V0 remains architecture-only.
+Publisher V0 and reconciliation are ready; next milestone is Telegram Approve
+→ Publisher Bridge V0 + Retry.
 
 ## Next step
 
-Before any Publisher implementation, run one controlled callback against a
-fresh notified `PENDING` draft and observe the APPLIED/IDEMPOTENT UX. Do not
-introduce automatic publication.
+Implement Telegram Approve → Publisher Bridge V0 + Retry, then perform a
+separate controlled real VK end-to-end test.
