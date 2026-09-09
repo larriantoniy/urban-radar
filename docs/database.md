@@ -18,6 +18,10 @@ migrations/006_content_draft_review_notes.sql
 migrations/007_content_draft_persisted_review.sql
 migrations/008_content_draft_review_notifications.sql
 migrations/009_content_media.sql
+migrations/010_content_draft_approved_payload_hash.sql
+migrations/011_publications.sql
+migrations/012_publications_recovery_required.sql
+migrations/013_publications_reconciliation_audit.sql
 ```
 
 The application-level persistence ports live beside `runtime/` and
@@ -41,6 +45,10 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/006_content_draft_review_n
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/007_content_draft_persisted_review.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/008_content_draft_review_notifications.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/009_content_media.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/010_content_draft_approved_payload_hash.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/011_publications.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/012_publications_recovery_required.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/013_publications_reconciliation_audit.sql
 ```
 
 `storage.OpenPostgres` owns connection setup (including a startup ping), and

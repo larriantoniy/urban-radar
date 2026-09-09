@@ -17,6 +17,7 @@ import (
 
 	"urban-radar/content"
 	"urban-radar/newscheck"
+	"urban-radar/publisher"
 	urruntime "urban-radar/runtime"
 	"urban-radar/storage"
 	"urban-radar/tgl"
@@ -38,6 +39,14 @@ func main() {
 	}
 	if len(os.Args) >= 3 && os.Args[1] == "content" && os.Args[2] == "review-notify" {
 		contentReviewNotify(os.Args[3:])
+		return
+	}
+	if len(os.Args) >= 3 && os.Args[1] == "content" && os.Args[2] == "publish" {
+		contentPublish(os.Args[3:])
+		return
+	}
+	if len(os.Args) >= 3 && os.Args[1] == "publication" && os.Args[2] == "reconcile" {
+		publicationReconcile(os.Args[3:])
 		return
 	}
 	if len(os.Args) >= 3 && os.Args[1] == "media" && os.Args[2] == "attach" {
@@ -290,7 +299,81 @@ func writeSummary(summary newscheck.Summary, err error) {
 }
 
 func usage() string {
-	return "usage: urban-radar tgl list | urban-radar tgl get <url> | urban-radar news check [--preflight] [flags] | urban-radar content experiment-v1 [--item source/source_item_id] [flags] | urban-radar content review approve|reject <draft-id> --actor <actor> | urban-radar content review-notify [--draft-id <id>] | urban-radar media attach <draft-id> --actor <actor> | urban-radar media cleanup [--dry-run]"
+	return "usage: urban-radar tgl list | urban-radar tgl get <url> | urban-radar news check [--preflight] [flags] | urban-radar content experiment-v1 [--item source/source_item_id] [flags] | urban-radar content review approve|reject <draft-id> --actor <actor> | urban-radar content review-notify [--draft-id <id>] | urban-radar content publish <draft-id> | urban-radar media attach <draft-id> --actor <actor> | urban-radar media cleanup [--dry-run]"
+}
+
+func contentPublish(args []string) {
+	if len(args) != 1 {
+		fail("usage: urban-radar content publish <draft-id>")
+	}
+	id, e := strconv.ParseInt(args[0], 10, 64)
+	if e != nil || id <= 0 {
+		fail("draft-id must be a positive int64")
+	}
+	u, e := storage.DatabaseURLFromEnv()
+	if e != nil {
+		fail(e.Error())
+	}
+	db, e := storage.OpenPostgres(context.Background(), u)
+	if e != nil {
+		fail(e.Error())
+	}
+	defer db.Close()
+	vk, e := publisher.NewVKClientFromEnv()
+	if e != nil {
+		_ = json.NewEncoder(os.Stdout).Encode(content.PublishResult{Result: "FAILED", Reason: "VK_CONFIG"})
+		return
+	}
+	r, e := (content.PublisherService{Store: storage.NewPostgresStore(db), VK: vk, MediaRoot: content.MediaRootFromEnv()}).PublishVK(context.Background(), id)
+	if e != nil {
+		fail(e.Error())
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(r)
+}
+func publicationReconcile(args []string) {
+	if len(args) < 1 {
+		fail("usage: urban-radar publication reconcile <publication-id> --published --external-post-id <id> --actor <actor> | --not-published --actor <actor>")
+	}
+	id, e := strconv.ParseInt(args[0], 10, 64)
+	if e != nil || id <= 0 {
+		fail("publication-id must be positive")
+	}
+	f := flag.NewFlagSet("publication reconcile", flag.ContinueOnError)
+	published := f.Bool("published", false, "mark published")
+	missing := f.Bool("not-published", false, "mark not published")
+	external := f.String("external-post-id", "", "VK post ID")
+	actor := f.String("actor", "", "actor")
+	if e = f.Parse(args[1:]); e != nil || f.NArg() != 0 || strings.TrimSpace(*actor) == "" || (*published == *missing) {
+		fail("invalid reconciliation arguments")
+	}
+	action := "MARK_NOT_PUBLISHED"
+	post := ""
+	if *published {
+		action = "MARK_PUBLISHED"
+		post, e = content.NormalizeVKPostID(*external)
+		if e != nil {
+			fail(e.Error())
+		}
+	}
+	u, e := storage.DatabaseURLFromEnv()
+	if e != nil {
+		fail(e.Error())
+	}
+	db, e := storage.OpenPostgres(context.Background(), u)
+	if e != nil {
+		fail(e.Error())
+	}
+	defer db.Close()
+	p, e := storage.NewPostgresStore(db).ReconcilePublication(context.Background(), id, action, post, *actor, time.Now().UTC())
+	if e != nil {
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"result": "BLOCKED"})
+		return
+	}
+	result := "RESOLVED_NOT_PUBLISHED"
+	if action == "MARK_PUBLISHED" {
+		result = "RESOLVED_PUBLISHED"
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"result": result, "publication_id": p.ID, "external_post_id": p.ExternalPostID})
 }
 
 func mediaAttach(args []string) {

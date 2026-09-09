@@ -75,12 +75,12 @@ func TestExecuteContentReviewIntegration(t *testing.T) {
 	if err != nil || approved.Result != "APPLIED" || approved.DraftID != draft.ContentDraftID || approved.ReviewState != content.ReviewStatusApproved {
 		t.Fatalf("approved=%+v err=%v", approved, err)
 	}
-	var state, actor, hash string
-	if err := db.QueryRowContext(ctx, `SELECT human_review_status,approved_by,approved_content_hash FROM content_drafts WHERE content_draft_id=$1`, draft.ContentDraftID).Scan(&state, &actor, &hash); err != nil {
+	var state, actor, hash, payloadHash string
+	if err := db.QueryRowContext(ctx, `SELECT human_review_status,approved_by,approved_content_hash,approved_payload_hash FROM content_drafts WHERE content_draft_id=$1`, draft.ContentDraftID).Scan(&state, &actor, &hash, &payloadHash); err != nil {
 		t.Fatal(err)
 	}
-	if state != content.ReviewStatusApproved || actor != "telegram:42" || hash != content.ContentHash(draft.PostText) {
-		t.Fatalf("state=%q actor=%q hash=%q", state, actor, hash)
+	if state != content.ReviewStatusApproved || actor != "telegram:42" || hash != content.ContentHash(draft.PostText) || payloadHash != content.ComputeApprovalPayloadHash(draft.PostText, nil) {
+		t.Fatalf("state=%q actor=%q hash=%q payload_hash=%q", state, actor, hash, payloadHash)
 	}
 	if err := db.QueryRowContext(ctx, `SELECT human_review_status FROM content_drafts WHERE content_draft_id=$1`, draftB.ContentDraftID).Scan(&state); err != nil || state != content.ReviewStatusPending {
 		t.Fatalf("draft B changed after callback for A: state=%q err=%v", state, err)

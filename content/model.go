@@ -58,6 +58,7 @@ type Draft struct {
 	ApprovedAt          *time.Time      `json:"approved_at,omitempty"`
 	ApprovedBy          string          `json:"approved_by,omitempty"`
 	ApprovedContentHash string          `json:"approved_content_hash,omitempty"`
+	ApprovedPayloadHash string          `json:"approved_payload_hash,omitempty"`
 	RejectedAt          *time.Time      `json:"rejected_at,omitempty"`
 	RejectedBy          string          `json:"rejected_by,omitempty"`
 	ReviewNotifiedAt    *time.Time      `json:"review_notified_at,omitempty"`

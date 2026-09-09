@@ -30,6 +30,131 @@ var _ content.Store = (*PostgresStore)(nil)
 var _ content.ReviewStore = (*PostgresStore)(nil)
 var _ content.ReviewNotificationStore = (*PostgresStore)(nil)
 var _ content.MediaStore = (*PostgresStore)(nil)
+var _ content.PublicationStore = (*PostgresStore)(nil)
+
+func (r *PostgresStore) LoadApprovedPublicationPayload(ctx context.Context, id int64) (content.PublishPayload, error) {
+	d, e := scanContentDraft(r.db.QueryRowContext(ctx, contentDraftSelect+` WHERE content_draft_id=$1`, id))
+	if e != nil {
+		return content.PublishPayload{}, e
+	}
+	p := content.PublishPayload{DraftID: id, Text: d.PostText}
+	var m content.PublishMedia
+	e = r.db.QueryRowContext(ctx, `SELECT storage_path,sha256 FROM content_media WHERE content_draft_id=$1 AND deleted_at IS NULL`, id).Scan(&m.StoragePath, &m.SHA256)
+	if e == nil {
+		p.Media = &m
+	} else if !errors.Is(e, sql.ErrNoRows) {
+		return p, e
+	}
+	return p, nil
+}
+func (r *PostgresStore) ClaimPublication(ctx context.Context, draftID int64, platform string, now time.Time) (content.PublicationClaim, error) {
+	tx, e := r.db.BeginTx(ctx, nil)
+	if e != nil {
+		return content.PublicationClaim{}, e
+	}
+	defer tx.Rollback()
+	_, e = tx.ExecContext(ctx, `INSERT INTO publications(content_draft_id,platform,status,created_at,updated_at) VALUES($1,$2,'PENDING',$3,$3) ON CONFLICT(content_draft_id,platform) DO NOTHING`, draftID, platform, now)
+	if e != nil {
+		return content.PublicationClaim{}, e
+	}
+	var p content.Publication
+	e = tx.QueryRowContext(ctx, `SELECT publication_id,content_draft_id,platform,status,attempt_count,COALESCE(last_error,''),COALESCE(external_post_id,''),created_at,COALESCE(published_at,'epoch'::timestamptz),updated_at FROM publications WHERE content_draft_id=$1 AND platform=$2 FOR UPDATE`, draftID, platform).Scan(&p.ID, &p.ContentDraftID, &p.Platform, &p.Status, &p.AttemptCount, &p.LastError, &p.ExternalPostID, &p.CreatedAt, &p.PublishedAt, &p.UpdatedAt)
+	if e != nil {
+		return content.PublicationClaim{}, e
+	}
+	c := content.PublicationClaim{Publication: p}
+	if p.Status == content.PublicationPublished {
+		c.Idempotent = true
+	} else if p.Status == content.PublicationPublishing || p.Status == content.PublicationRecoveryRequired {
+		c.RecoveryRequired = true
+	} else {
+		_, e = tx.ExecContext(ctx, `UPDATE publications SET status='PUBLISHING',attempt_count=attempt_count+1,last_error=NULL,updated_at=$2 WHERE publication_id=$1`, p.ID, now)
+		if e != nil {
+			return c, e
+		}
+		c.Publication.Status = content.PublicationPublishing
+		c.Publication.AttemptCount++
+	}
+	if e = tx.Commit(); e != nil {
+		return c, e
+	}
+	return c, nil
+}
+func (r *PostgresStore) MarkPublicationPublished(ctx context.Context, id int64, platform, external string, now time.Time) error {
+	result, e := r.db.ExecContext(ctx, `UPDATE publications SET status='PUBLISHED',external_post_id=$3,published_at=$4,updated_at=$4,last_error=NULL WHERE publication_id=$1 AND platform=$2 AND status='PUBLISHING'`, id, platform, external, now)
+	if e != nil {
+		return e
+	}
+	n, e := result.RowsAffected()
+	if e != nil {
+		return e
+	}
+	if n != 1 {
+		return errors.New("publication is not publishing")
+	}
+	return nil
+}
+func (r *PostgresStore) MarkPublicationFailed(ctx context.Context, id int64, platform, msg string, now time.Time) error {
+	result, e := r.db.ExecContext(ctx, `UPDATE publications SET status='FAILED',last_error=$3,updated_at=$4 WHERE publication_id=$1 AND platform=$2 AND status='PUBLISHING'`, id, platform, msg, now)
+	if e != nil {
+		return e
+	}
+	n, e := result.RowsAffected()
+	if e != nil {
+		return e
+	}
+	if n != 1 {
+		return errors.New("publication is not publishing")
+	}
+	return nil
+}
+func (r *PostgresStore) MarkPublicationRecoveryRequired(ctx context.Context, id int64, platform, msg string, now time.Time) error {
+	result, e := r.db.ExecContext(ctx, `UPDATE publications SET status='RECOVERY_REQUIRED',last_error=$3,updated_at=$4 WHERE publication_id=$1 AND platform=$2 AND status='PUBLISHING'`, id, platform, msg, now)
+	if e != nil {
+		return e
+	}
+	n, e := result.RowsAffected()
+	if e != nil {
+		return e
+	}
+	if n != 1 {
+		return errors.New("publication is not publishing")
+	}
+	return nil
+}
+func (r *PostgresStore) ReconcilePublication(ctx context.Context, id int64, action, external, actor string, now time.Time) (content.Publication, error) {
+	tx, e := r.db.BeginTx(ctx, nil)
+	if e != nil {
+		return content.Publication{}, e
+	}
+	defer tx.Rollback()
+	var p content.Publication
+	e = tx.QueryRowContext(ctx, `SELECT publication_id,content_draft_id,platform,status,attempt_count,COALESCE(last_error,''),COALESCE(external_post_id,''),created_at,COALESCE(published_at,'epoch'::timestamptz),updated_at FROM publications WHERE publication_id=$1 FOR UPDATE`, id).Scan(&p.ID, &p.ContentDraftID, &p.Platform, &p.Status, &p.AttemptCount, &p.LastError, &p.ExternalPostID, &p.CreatedAt, &p.PublishedAt, &p.UpdatedAt)
+	if e != nil {
+		return p, e
+	}
+	if p.Status != content.PublicationRecoveryRequired {
+		return p, errors.New("publication reconciliation blocked")
+	}
+	if action == "MARK_PUBLISHED" {
+		if external == "" {
+			return p, errors.New("external post ID required")
+		}
+		_, e = tx.ExecContext(ctx, `UPDATE publications SET status='PUBLISHED',external_post_id=$2,published_at=$3,reconciled_at=$3,reconciled_by=$4,updated_at=$3,last_error=NULL WHERE publication_id=$1`, id, external, now, actor)
+		p.Status = content.PublicationPublished
+		p.ExternalPostID = external
+	} else if action == "MARK_NOT_PUBLISHED" {
+		_, e = tx.ExecContext(ctx, `UPDATE publications SET status='FAILED',reconciled_at=$2,reconciled_by=$3,updated_at=$2 WHERE publication_id=$1`, id, now, actor)
+		p.Status = content.PublicationFailed
+	} else {
+		return p, errors.New("invalid reconciliation action")
+	}
+	if e != nil {
+		return p, e
+	}
+	e = tx.Commit()
+	return p, e
+}
 
 func (r *PostgresStore) AttachMedia(ctx context.Context, draftID int64, media content.Media) (content.Media, *content.Media, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -71,7 +196,7 @@ func (r *PostgresStore) AttachMedia(ctx context.Context, draftID int64, media co
 }
 
 func (r *PostgresStore) CleanupRejectedMedia(ctx context.Context, cutoff time.Time, dryRun bool) (int, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT cm.id,cm.storage_path FROM content_media cm JOIN content_drafts d ON d.content_draft_id=cm.content_draft_id WHERE d.human_review_status='REJECTED' AND d.rejected_at <= $1 AND cm.deleted_at IS NULL`, cutoff)
+	rows, err := r.db.QueryContext(ctx, `SELECT DISTINCT cm.id,cm.storage_path FROM content_media cm JOIN content_drafts d ON d.content_draft_id=cm.content_draft_id LEFT JOIN publications p ON p.content_draft_id=d.content_draft_id AND p.platform='VK' WHERE cm.deleted_at IS NULL AND ((d.human_review_status='REJECTED' AND d.rejected_at <= $1) OR (p.status='PUBLISHED' AND p.published_at <= $1))`, cutoff)
 	if err != nil {
 		return 0, err
 	}
@@ -307,19 +432,19 @@ func (r *PostgresStore) FindContentDraft(ctx context.Context, sourceName, source
 
 const contentDraftSelect = `SELECT content_draft_id,source,source_item_id,schema_version,style_version,platform,event_type,hook,body,closing,
 source_label,source_url,post_text,fact_warnings,human_review_required,human_review_status,human_review_notes,
-approved_at,approved_by,approved_content_hash,rejected_at,rejected_by,source_input_hash,
+approved_at,approved_by,approved_content_hash,approved_payload_hash,rejected_at,rejected_by,source_input_hash,
 review_notified_at,review_notification_channel,review_notification_external_id,
 editor_policy_id,editor_input_hash,model,provider,generated_at,usage,raw_output FROM content_drafts`
 
 func scanContentDraft(row rowScanner) (content.Draft, error) {
 	var draft content.Draft
 	var warnings, usage, raw []byte
-	var notes, approvedBy, approvedHash, rejectedBy, notificationChannel, notificationExternalID sql.NullString
+	var notes, approvedBy, approvedHash, approvedPayloadHash, rejectedBy, notificationChannel, notificationExternalID sql.NullString
 	var approvedAt, rejectedAt, notifiedAt sql.NullTime
 	err := row.Scan(&draft.ContentDraftID, &draft.Source, &draft.SourceItemID, &draft.SchemaVersion, &draft.StyleVersion,
 		&draft.Platform, &draft.EventType, &draft.Hook, &draft.Body, &draft.Closing, &draft.SourceLabel,
 		&draft.SourceURL, &draft.PostText, &warnings, &draft.HumanReviewRequired, &draft.HumanReviewStatus,
-		&notes, &approvedAt, &approvedBy, &approvedHash, &rejectedAt, &rejectedBy, &draft.SourceInputHash, &notifiedAt, &notificationChannel, &notificationExternalID,
+		&notes, &approvedAt, &approvedBy, &approvedHash, &approvedPayloadHash, &rejectedAt, &rejectedBy, &draft.SourceInputHash, &notifiedAt, &notificationChannel, &notificationExternalID,
 		&draft.EditorPolicyID, &draft.EditorInputHash, &draft.Model, &draft.Provider, &draft.GeneratedAt, &usage, &raw)
 	if err != nil {
 		return content.Draft{}, err
@@ -343,6 +468,9 @@ func scanContentDraft(row rowScanner) (content.Draft, error) {
 	}
 	if approvedHash.Valid {
 		draft.ApprovedContentHash = approvedHash.String
+	}
+	if approvedPayloadHash.Valid {
+		draft.ApprovedPayloadHash = approvedPayloadHash.String
 	}
 	if rejectedAt.Valid {
 		value := rejectedAt.Time
@@ -425,11 +553,16 @@ func (r *PostgresStore) TransitionContentDraftReview(ctx context.Context, draftI
 	if draft.HumanReviewStatus == content.ReviewStatusPending {
 		switch decision {
 		case content.ReviewApprove:
+			mediaSHA, err := activeMediaSHA256(ctx, tx, draftID)
+			if err != nil {
+				return content.ReviewResult{}, err
+			}
 			draft.HumanReviewStatus = content.ReviewStatusApproved
 			draft.ApprovedAt = &at
 			draft.ApprovedBy = actor
 			draft.ApprovedContentHash = draft.CurrentContentHash()
-			_, err = tx.ExecContext(ctx, `UPDATE content_drafts SET human_review_status=$2,approved_at=$3,approved_by=$4,approved_content_hash=$5 WHERE content_draft_id=$1`, draftID, draft.HumanReviewStatus, at, actor, draft.ApprovedContentHash)
+			draft.ApprovedPayloadHash = content.ComputeApprovalPayloadHash(draft.PostText, mediaSHA)
+			_, err = tx.ExecContext(ctx, `UPDATE content_drafts SET human_review_status=$2,approved_at=$3,approved_by=$4,approved_content_hash=$5,approved_payload_hash=$6 WHERE content_draft_id=$1`, draftID, draft.HumanReviewStatus, at, actor, draft.ApprovedContentHash, draft.ApprovedPayloadHash)
 		case content.ReviewReject:
 			draft.HumanReviewStatus = content.ReviewStatusRejected
 			draft.RejectedAt = &at
@@ -454,6 +587,40 @@ func (r *PostgresStore) TransitionContentDraftReview(ctx context.Context, draftI
 		return content.ReviewResult{Draft: draft, Applied: false}, nil
 	}
 	return content.ReviewResult{}, fmt.Errorf("%w: draft %d is %s", content.ErrInvalidReviewTransition, draftID, draft.HumanReviewStatus)
+}
+
+type queryRower interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func activeMediaSHA256(ctx context.Context, db queryRower, draftID int64) (*string, error) {
+	var hash string
+	err := db.QueryRowContext(ctx, `SELECT sha256 FROM content_media WHERE content_draft_id=$1 AND deleted_at IS NULL`, draftID).Scan(&hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &hash, nil
+}
+
+// ValidateApprovedPayload is the deterministic, read-only Publisher V0 gate.
+// It intentionally compares the current PostgreSQL payload independently from
+// media mutation guards.
+func (r *PostgresStore) ValidateApprovedPayload(ctx context.Context, draftID int64) (content.ApprovalPayloadValidation, error) {
+	draft, err := scanContentDraft(r.db.QueryRowContext(ctx, contentDraftSelect+` WHERE content_draft_id=$1`, draftID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return content.ApprovalPayloadValidation{Status: content.ApprovalPayloadNotApproved}, nil
+	}
+	if err != nil {
+		return content.ApprovalPayloadValidation{}, err
+	}
+	mediaSHA, err := activeMediaSHA256(ctx, r.db, draftID)
+	if err != nil {
+		return content.ApprovalPayloadValidation{}, err
+	}
+	return content.ValidateApprovedPayload(draft, mediaSHA), nil
 }
 
 const runtimeSelect = `SELECT source,source_item_id,source_url,title,summary,body_text,

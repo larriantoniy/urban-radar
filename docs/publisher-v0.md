@@ -1,7 +1,7 @@
 # Publisher V0 — Architecture Design
 
-Publisher V0 is not implemented and does not authorize automatic publication.
-This document defines the boundary for a later, separately evaluated milestone.
+Publisher V0 is explicit operator-triggered work and never authorizes automatic
+publication.
 
 ## Authority and input
 
@@ -10,8 +10,7 @@ from a persisted `ContentDraft` for which `content.IsPublishable(draft)` is
 true:
 
 ```text
-human_review_status = APPROVED
-approved_content_hash = SHA-256(current post_text)
+ValidateApprovedPayload(draftID) = ELIGIBLE
 ```
 
 An approved status by itself is insufficient. A changed draft, a missing audit
@@ -21,18 +20,16 @@ does not authorize publication by itself.
 ## Proposed flow
 
 ```text
-approved immutable ContentDraft
-→ Publisher Agent builds a structured publication payload
-→ deterministic Go publisher validates payload against approved content
-→ persisted idempotency/publication attempt
+approved immutable ContentDraft + media SHA
+→ deterministic Go publisher validates current payload and local media bytes
+→ persisted VK publication attempt
 → VK wall.post
 → persisted external post identity and terminal result
 ```
 
-The Publisher Agent is limited to forming the platform payload. The
-deterministic Go runtime owns API credentials, request execution, retry policy,
-idempotency, persistence, and every publication-state transition. It must not
-call VK from an LLM tool path.
+The deterministic Go runtime owns API credentials, request execution,
+idempotency, persistence, and every publication-state transition. No LLM stage
+exists after human approval.
 
 ## Payload and fact integrity
 
@@ -56,16 +53,16 @@ post identity, and terminal failure. A retry must reuse the same persisted
 idempotency identity; it must never decide to publish a different or newer
 draft.
 
-The exact PostgreSQL schema, VK request contract, retry budget, and recovery
-semantics are intentionally deferred to the Publisher V0 milestone. They must
-be evaluated against VK's documented idempotency and response behavior before
-implementation. No queue, worker, scheduler, or autonomous trigger is implied
-by this design.
+`publications` is unique per draft/platform. A confirmed `PUBLISHED` row is
+idempotent. Definitive pre-`wall.post` failures become `FAILED` and may be
+retried explicitly. A transport ambiguity after `wall.post` becomes
+`RECOVERY_REQUIRED`: it must never be automatically or normally retried because
+VK cannot provide a proven exactly-once guarantee; an operator must reconcile.
+`MARK_PUBLISHED` records an operator-supplied post ID without calling VK;
+`MARK_NOT_PUBLISHED` moves the publication to `FAILED`. No automatic VK wall
+search is performed.
 
 ## Explicit non-goals
 
-- No VK credentials or API calls.
-- No `wall.post` implementation.
 - No automatic publication after review approval.
-- No publication state or migration in the current runtime.
 - No notification/review transport changes.

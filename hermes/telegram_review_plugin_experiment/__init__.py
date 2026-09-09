@@ -22,7 +22,7 @@ CALLBACK_PATTERN = r"^ur:"
 MAX_CALLBACK_DATA_BYTES = 64
 MAX_DRAFT_ID_DIGITS = 19
 _DRAFT_ID_RE = re.compile(r"^[1-9][0-9]{0,18}$")
-_ACTIONS = frozenset({"approve", "reject", "attach"})
+_ACTIONS = frozenset({"approve", "reject", "attach", "pub-found", "pub-missing"})
 _MAX_PENDING_ATTACHMENTS = 128
 _PENDING_ATTACHMENT_SECONDS = 15 * 60
 _FINAL_STATUS_LINES = frozenset({
@@ -43,6 +43,7 @@ class ReviewAction(Protocol):
     def reject(self, draft_id: int, actor: str) -> object: ...
 
     def attach(self, draft_id: int, actor: str, image: bytes) -> None: ...
+    def reconcile(self, publication_id: int, published: bool, post_id: str, actor: str) -> object: ...
 
 
 @dataclass(frozen=True)
@@ -121,6 +122,14 @@ class CLIReviewAction:
             raise ReviewBridgeError("Urban Radar media command returned malformed JSON") from exc
         if not isinstance(payload, dict) or payload.get("result") != "ATTACHED" or payload.get("draft_id") != draft_id:
             raise ReviewBridgeError("Urban Radar media command confirmed the wrong draft")
+    def reconcile(self, publication_id: int, published: bool, post_id: str, actor: str) -> object:
+        args=[self.command,"publication","reconcile",str(publication_id),"--actor",actor]
+        args += ["--published","--external-post-id",post_id] if published else ["--not-published"]
+        done=self.runner(args,capture_output=True,check=False,text=True)
+        if done.returncode: raise ReviewBridgeError("Urban Radar reconciliation command failed")
+        value=json.loads(done.stdout)
+        if not isinstance(value,dict) or value.get("result") not in {"RESOLVED_PUBLISHED","RESOLVED_NOT_PUBLISHED"}: raise ReviewBridgeError("Urban Radar reconciliation was not confirmed")
+        return value
 
 
 class CapturingReviewAction:
@@ -300,6 +309,7 @@ def build_telegram_handler(action: ReviewAction):
     """Return a pinned-Hermes PTB handler factory for the ``ur:`` namespace."""
 
     pending: dict[tuple[str, object, object, object], tuple[int, float]] = {}
+    pending_reconciliation: dict[tuple[str, object, object, object], tuple[int, float]] = {}
 
     def authorized(query: object) -> tuple[str, tuple[str, object, object, object]] | None:
         user_id = _callback_user_id(query); message=getattr(query,"message",None); chat=getattr(message,"chat",None)
@@ -324,6 +334,15 @@ def build_telegram_handler(action: ReviewAction):
             pending[identity[1]]=(parsed.draft_id, now + _PENDING_ATTACHMENT_SECONDS)
             await _answer_callback(query,"Отправьте одно фото ответом на эту карточку.",show_alert=False)
             return
+        if parsed and parsed.action in {"pub-found", "pub-missing"}:
+            identity=authorized(query)
+            if identity is None: await _answer_callback(query,"Действие недоступно.",show_alert=True); return
+            if parsed.action=="pub-missing":
+                try: action.reconcile(parsed.draft_id,False,"",f"telegram:{identity[0]}")
+                except Exception: await _answer_callback(query,"Не удалось сохранить решение.",show_alert=True); return
+                await _answer_callback(query,"Публикация помечена как не выполненная.",show_alert=False); return
+            pending_reconciliation[identity[1]]=(parsed.draft_id,time.monotonic()+_PENDING_ATTACHMENT_SECONDS)
+            await _answer_callback(query,"Пришлите ID поста VK ответом на это сообщение. Например: 987",show_alert=False); return
         captured_action = CapturingReviewAction(action)
         try:
             handled = await handle_callback_query(query, adapter, captured_action)
@@ -376,6 +395,17 @@ def build_telegram_handler(action: ReviewAction):
                 reply_fn=getattr(message,"reply_text",None)
                 if callable(reply_fn): await reply_fn("Не удалось сохранить фото. Повторите позже.")
         application.add_handler(MessageHandler(filters.PHOTO & filters.REPLY, on_photo))
+        async def on_reconciliation_text(update, context) -> None:
+            del context
+            message=getattr(update,"effective_message",None); reply=getattr(message,"reply_to_message",None); sender=getattr(message,"from_user",None); user_id=str(getattr(sender,"id","")).strip(); key=(user_id,getattr(reply,"chat_id",None),getattr(reply,"message_thread_id",None),getattr(reply,"message_id",None)); entry=pending_reconciliation.get(key)
+            if not entry or entry[1]<=time.monotonic(): pending_reconciliation.pop(key,None);return
+            checker=getattr(adapter,"_is_callback_user_authorized",None);chat=getattr(message,"chat",None)
+            if not callable(checker) or not checker(user_id,chat_id=key[1],chat_type=getattr(chat,"type",None),thread_id=key[2],user_name=getattr(sender,"first_name",None)):return
+            try:
+                action.reconcile(entry[0],True,str(getattr(message,"text","")).strip(),f"telegram:{user_id}");pending_reconciliation.pop(key,None)
+                await reply.edit_text(text=getattr(reply,"text","")+"\n\n✅ Публикация подтверждена",reply_markup=None)
+            except Exception: await message.reply_text("Не удалось подтвердить ID поста.")
+        application.add_handler(MessageHandler(filters.TEXT & filters.REPLY, on_reconciliation_text))
 
     adapter = None
     return wire

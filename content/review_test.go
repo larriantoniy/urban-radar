@@ -78,3 +78,51 @@ func TestContentHashUsesOnlyExactPostText(t *testing.T) {
 		t.Fatal("content hash must be deterministic over exact post_text bytes")
 	}
 }
+
+func TestApprovalPayloadHashCanonicalContract(t *testing.T) {
+	media := "aabb"
+	withoutMedia := ComputeApprovalPayloadHash("text", nil)
+	withMedia := ComputeApprovalPayloadHash("text", &media)
+	if withoutMedia != ComputeApprovalPayloadHash("text", nil) {
+		t.Fatal("same payload must hash identically")
+	}
+	if withoutMedia == ComputeApprovalPayloadHash("text changed", nil) {
+		t.Fatal("text must affect payload hash")
+	}
+	if withMedia == ComputeApprovalPayloadHash("text", nil) {
+		t.Fatal("null media must differ from media")
+	}
+	otherMedia := "ccdd"
+	if withMedia == ComputeApprovalPayloadHash("text", &otherMedia) {
+		t.Fatal("media hash must affect payload hash")
+	}
+}
+
+func TestValidateApprovedPayloadFailsClosed(t *testing.T) {
+	media := "media-a"
+	draft := Draft{HumanReviewStatus: ReviewStatusApproved, PostText: "text"}
+	draft.ApprovedPayloadHash = ComputeApprovalPayloadHash(draft.PostText, &media)
+	if got := ValidateApprovedPayload(draft, &media).Status; got != ApprovalPayloadEligible {
+		t.Fatalf("got %s", got)
+	}
+	draft.PostText = "changed"
+	if got := ValidateApprovedPayload(draft, &media).Status; got != ApprovalPayloadMismatch {
+		t.Fatalf("text got %s", got)
+	}
+	draft.PostText = "text"
+	if got := ValidateApprovedPayload(draft, nil).Status; got != ApprovalPayloadMismatch {
+		t.Fatalf("removal got %s", got)
+	}
+	draft.ApprovedPayloadHash = ComputeApprovalPayloadHash("text", nil)
+	if got := ValidateApprovedPayload(draft, &media).Status; got != ApprovalPayloadMismatch {
+		t.Fatalf("addition got %s", got)
+	}
+	draft.ApprovedPayloadHash = ""
+	if got := ValidateApprovedPayload(draft, nil).Status; got != ApprovalPayloadMissingApprovedPayloadHash {
+		t.Fatalf("legacy got %s", got)
+	}
+	draft.HumanReviewStatus = ReviewStatusRejected
+	if got := ValidateApprovedPayload(draft, nil).Status; got != ApprovalPayloadNotApproved {
+		t.Fatalf("rejected got %s", got)
+	}
+}

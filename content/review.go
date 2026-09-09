@@ -4,11 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 )
+
+const approvalPayloadVersion = "approval-payload-v1:"
 
 const (
 	ReviewStatusPending  = "PENDING"
@@ -38,6 +41,45 @@ type ReviewStore interface {
 type ReviewResult struct {
 	Draft   Draft
 	Applied bool
+}
+
+type ApprovalPayloadStatus string
+
+const (
+	ApprovalPayloadEligible                   ApprovalPayloadStatus = "ELIGIBLE"
+	ApprovalPayloadNotApproved                ApprovalPayloadStatus = "NOT_APPROVED"
+	ApprovalPayloadMissingApprovedPayloadHash ApprovalPayloadStatus = "MISSING_APPROVED_PAYLOAD_HASH"
+	ApprovalPayloadMismatch                   ApprovalPayloadStatus = "PAYLOAD_MISMATCH"
+)
+
+type ApprovalPayloadValidation struct{ Status ApprovalPayloadStatus }
+
+// ComputeApprovalPayloadHash hashes versioned canonical JSON. A struct, not a
+// map, fixes the field order; a nil media SHA serializes as JSON null.
+func ComputeApprovalPayloadHash(postText string, mediaSHA256 *string) string {
+	payload := struct {
+		PostText    string  `json:"post_text"`
+		MediaSHA256 *string `json:"media_sha256"`
+	}{PostText: postText, MediaSHA256: mediaSHA256}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		panic(err)
+	}
+	sum := sha256.Sum256(append([]byte(approvalPayloadVersion), encoded...))
+	return hex.EncodeToString(sum[:])
+}
+
+func ValidateApprovedPayload(draft Draft, mediaSHA256 *string) ApprovalPayloadValidation {
+	if draft.HumanReviewStatus != ReviewStatusApproved {
+		return ApprovalPayloadValidation{Status: ApprovalPayloadNotApproved}
+	}
+	if draft.ApprovedPayloadHash == "" {
+		return ApprovalPayloadValidation{Status: ApprovalPayloadMissingApprovedPayloadHash}
+	}
+	if draft.ApprovedPayloadHash != ComputeApprovalPayloadHash(draft.PostText, mediaSHA256) {
+		return ApprovalPayloadValidation{Status: ApprovalPayloadMismatch}
+	}
+	return ApprovalPayloadValidation{Status: ApprovalPayloadEligible}
 }
 
 // ReviewService is the deterministic boundary that a future transport adapter

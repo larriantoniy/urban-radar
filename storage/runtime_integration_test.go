@@ -189,6 +189,11 @@ func TestPostgresStoreContentDraftReviewTransition(t *testing.T) {
 	if err != nil || !found || draft.ContentDraftID == 0 {
 		t.Fatalf("found=%v draft=%+v err=%v", found, draft, err)
 	}
+	defer db.ExecContext(ctx, `DELETE FROM content_media WHERE content_draft_id=$1`, draft.ContentDraftID)
+	mediaSHA := "media-sha-at-approval"
+	if _, err := db.ExecContext(ctx, `INSERT INTO content_media(content_draft_id,storage_path,sha256,uploaded_at,uploaded_by) VALUES($1,$2,$3,$4,$5)`, draft.ContentDraftID, "draft-test.jpg", mediaSHA, now, "telegram:123"); err != nil {
+		t.Fatal(err)
+	}
 	service := content.ReviewService{Store: store, Now: func() time.Time { return now }}
 	type approvalResult struct {
 		result content.ReviewResult
@@ -226,8 +231,14 @@ func TestPostgresStoreContentDraftReviewTransition(t *testing.T) {
 	if approved.Draft.ApprovedContentHash != content.ContentHash("exact review text") {
 		t.Fatalf("wrong approval hash: %q", approved.Draft.ApprovedContentHash)
 	}
+	if approved.Draft.ApprovedPayloadHash != content.ComputeApprovalPayloadHash("exact review text", &mediaSHA) {
+		t.Fatalf("wrong approval payload hash: %q", approved.Draft.ApprovedPayloadHash)
+	}
+	if validation, err := store.ValidateApprovedPayload(ctx, draft.ContentDraftID); err != nil || validation.Status != content.ApprovalPayloadEligible {
+		t.Fatalf("validation=%+v err=%v", validation, err)
+	}
 	replay, err := service.ApproveDraft(ctx, draft.ContentDraftID, "telegram:123")
-	if err != nil || replay.Applied || replay.Draft.ApprovedAt == nil || !replay.Draft.ApprovedAt.Equal(*approved.Draft.ApprovedAt) {
+	if err != nil || replay.Applied || replay.Draft.ApprovedAt == nil || !replay.Draft.ApprovedAt.Equal(*approved.Draft.ApprovedAt) || replay.Draft.ApprovedPayloadHash != approved.Draft.ApprovedPayloadHash {
 		t.Fatalf("replay=%+v err=%v", replay, err)
 	}
 	if _, err := service.RejectDraft(ctx, draft.ContentDraftID, "telegram:123"); !errors.Is(err, content.ErrInvalidReviewTransition) {
@@ -239,6 +250,24 @@ func TestPostgresStoreContentDraftReviewTransition(t *testing.T) {
 	mutated, found, err := store.FindContentDraft(ctx, item.Source, item.SourceItemID, draft.StyleVersion, draft.Platform, draft.SourceInputHash)
 	if err != nil || !found || content.IsPublishable(mutated) {
 		t.Fatalf("mutated=%+v found=%v err=%v", mutated, found, err)
+	}
+	if validation, err := store.ValidateApprovedPayload(ctx, draft.ContentDraftID); err != nil || validation.Status != content.ApprovalPayloadMismatch {
+		t.Fatalf("text validation=%+v err=%v", validation, err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE content_drafts SET post_text='exact review text' WHERE content_draft_id=$1`, draft.ContentDraftID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE content_media SET sha256='media-sha-replaced' WHERE content_draft_id=$1`, draft.ContentDraftID); err != nil {
+		t.Fatal(err)
+	}
+	if validation, err := store.ValidateApprovedPayload(ctx, draft.ContentDraftID); err != nil || validation.Status != content.ApprovalPayloadMismatch {
+		t.Fatalf("media validation=%+v err=%v", validation, err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE content_media SET deleted_at=$2 WHERE content_draft_id=$1`, draft.ContentDraftID, now); err != nil {
+		t.Fatal(err)
+	}
+	if validation, err := store.ValidateApprovedPayload(ctx, draft.ContentDraftID); err != nil || validation.Status != content.ApprovalPayloadMismatch {
+		t.Fatalf("removed media validation=%+v err=%v", validation, err)
 	}
 	rejected := draft
 	rejected.ContentDraftID = 0
@@ -252,7 +281,7 @@ func TestPostgresStoreContentDraftReviewTransition(t *testing.T) {
 		t.Fatalf("rejected draft found=%v err=%v", found, err)
 	}
 	rejectedResult, err := service.RejectDraft(ctx, rejected.ContentDraftID, "operator:radar")
-	if err != nil || !rejectedResult.Applied || rejectedResult.Draft.HumanReviewStatus != content.ReviewStatusRejected || rejectedResult.Draft.RejectedAt == nil || rejectedResult.Draft.RejectedBy != "operator:radar" || rejectedResult.Draft.ApprovedAt != nil || rejectedResult.Draft.ApprovedContentHash != "" || content.IsPublishable(rejectedResult.Draft) {
+	if err != nil || !rejectedResult.Applied || rejectedResult.Draft.HumanReviewStatus != content.ReviewStatusRejected || rejectedResult.Draft.RejectedAt == nil || rejectedResult.Draft.RejectedBy != "operator:radar" || rejectedResult.Draft.ApprovedAt != nil || rejectedResult.Draft.ApprovedContentHash != "" || rejectedResult.Draft.ApprovedPayloadHash != "" || content.IsPublishable(rejectedResult.Draft) {
 		t.Fatalf("rejected=%+v err=%v", rejectedResult, err)
 	}
 	if _, err := service.ApproveDraft(ctx, rejected.ContentDraftID, "operator:radar"); !errors.Is(err, content.ErrInvalidReviewTransition) {
