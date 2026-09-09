@@ -7,7 +7,9 @@ Source → Discovery → Editor → Content → Telegram Human Review
 → APPROVED payload → Publisher V0
 ```
 
-Telegram Approve does not invoke Publisher automatically.
+An authorized Telegram Approve invokes Publisher only after the independent
+approval transaction has committed. The bridge invokes the existing
+`urban-radar content publish <draft-id>` boundary; it does not call VK itself.
 
 The current review path is deterministic:
 
@@ -40,8 +42,8 @@ See [database.md](database.md) for persisted review and notification fields, and
 
 Manual Media Attach V0 uses `content_drafts 1 → 0..1 content_media`:
 `content_drafts` is content plus human review, `content_media` is its attached
-local media artifact, and `publications` remains the later owner of external
-side effects. DB metadata is durable; the local file is disposable; cleanup is
+local media artifact, and `publications` owns persisted external side effects.
+DB metadata is durable; the local file is disposable; cleanup is
 driven by DB state.
 
 The completed V0 contract is:
@@ -51,10 +53,11 @@ Telegram review → manual JPEG/PNG attach → persistent local media
 → content_media → human Approve/Reject
 ```
 
-Publisher V0 is explicit operator-only CLI work: `Human Review →
-approved_payload_hash → ValidateApprovedPayload → local media SHA verification
-→ deterministic Publisher → external side effect`. No LLM stage exists after
-human approval.
+Publisher V0 runs only from explicit human action: `Telegram Approve → persisted
+APPROVED → approved_payload_hash → ValidateApprovedPayload → local media SHA
+verification → deterministic Publisher → external side effect`. A failed or
+unknown Publisher invocation never rolls back approval. No LLM stage exists
+after human approval.
 
 Approve/Reject work through Telegram. Manual JPEG/PNG attachment is available.
 Approved text and media are immutable; a change requires new human review.
@@ -109,6 +112,23 @@ Operator confirmation is authoritative; normalized external ID plus
 `reconciled_at`/`reconciled_by` are persisted. Telegram reconciliation input is
 transient, bounded, and context-bound; PostgreSQL remains authority.
 
+The same Telegram review card renders Publisher outcomes after approval:
+`PUBLISHED`, `IDEMPOTENT`, `FAILED`, `RECOVERY_REQUIRED`, or `BLOCKED`.
+Only `FAILED` has an explicit `🔁 Повторить публикацию` control. Each retry is
+addressed as `ur:pub-retry:<publication_id>` and first rereads that persisted
+publication. Only persisted `FAILED` may invoke one fresh Publisher CLI attempt,
+which repeats payload and local-media verification. A retry encountering
+`PUBLISHING` is blocked as an active/in-progress attempt and does not alter the
+persisted row. Telegram shows reconciliation controls only for persisted
+`RECOVERY_REQUIRED`. `PUBLISHED` and `RECOVERY_REQUIRED` cannot be retried;
+reconciliation to `FAILED` is required first.
+
+If an operator has established that a `PUBLISHING` process crashed, the only
+recovery entry point is `urban-radar publication recover <publication-id>
+--actor <actor>`. It explicitly transitions `PUBLISHING → RECOVERY_REQUIRED`,
+performs no VK call, and records `recovery_required_at` / `recovery_required_by`.
+The normal reconciliation flow then determines `PUBLISHED` or `FAILED`.
+
 Media cleanup is DB-timestamp driven, never filesystem mtime: active media is
 deleted after seven days for REJECTED drafts or PUBLISHED VK publications, while
 its metadata remains as audit history.
@@ -143,8 +163,6 @@ item is `PUBLISHED` and no VK call has occurred.
 ## Known gaps
 
 - Automatic notification after NewsCheck is not wired.
-- Telegram Approve → automatic Publisher bridge is not implemented.
-- Explicit Telegram retry after FAILED is not implemented.
 - Production deployment of the review path has not been performed.
 - Notification delivery is not exactly-once; there is no outbox or retry worker.
 
@@ -167,10 +185,8 @@ Publisher V0 is deterministic and explicit-CLI only: see [publisher-v0.md](publi
 
 ## Current milestone
 
-Publisher V0 and reconciliation are ready; next milestone is Telegram Approve
-→ Publisher Bridge V0 + Retry.
+Telegram Approve → Publisher Bridge V0 + Retry is implemented.
 
 ## Next step
 
-Implement Telegram Approve → Publisher Bridge V0 + Retry, then perform a
-separate controlled real VK end-to-end test.
+Perform a separate controlled real VK end-to-end test.

@@ -15,12 +15,15 @@ type fakePubStore struct {
 	claim             PublicationClaim
 	failed, published bool
 	recovery          bool
+	loads             int
+	finalizeErr       error
 }
 
 func (s *fakePubStore) ValidateApprovedPayload(context.Context, int64) (ApprovalPayloadValidation, error) {
 	return s.validation, nil
 }
 func (s *fakePubStore) LoadApprovedPublicationPayload(context.Context, int64) (PublishPayload, error) {
+	s.loads++
 	return s.payload, nil
 }
 func (s *fakePubStore) ClaimPublication(context.Context, int64, string, time.Time) (PublicationClaim, error) {
@@ -28,11 +31,11 @@ func (s *fakePubStore) ClaimPublication(context.Context, int64, string, time.Tim
 }
 func (s *fakePubStore) MarkPublicationPublished(context.Context, int64, string, string, time.Time) error {
 	s.published = true
-	return nil
+	return s.finalizeErr
 }
 func (s *fakePubStore) MarkPublicationFailed(context.Context, int64, string, string, time.Time) error {
 	s.failed = true
-	return nil
+	return s.finalizeErr
 }
 func (s *fakePubStore) MarkPublicationRecoveryRequired(context.Context, int64, string, string, time.Time) error {
 	s.recovery = true
@@ -70,6 +73,50 @@ func TestPublisherAmbiguousFailureRequiresRecovery(t *testing.T) {
 		t.Fatal(r, e)
 	}
 }
+
+func TestPublisherPublishingClaimBlocksWithoutVKCall(t *testing.T) {
+	s := &fakePubStore{
+		validation: ApprovalPayloadValidation{Status: ApprovalPayloadEligible},
+		claim: PublicationClaim{
+			Publication: Publication{ID: 4, Status: PublicationPublishing},
+			InProgress:  true,
+		},
+	}
+	v := &fakeVK{}
+	r, e := (PublisherService{Store: s, VK: v}).PublishVK(context.Background(), 1)
+	if e != nil || r.Result != "BLOCKED" || r.Reason != "PUBLISHING_ACTIVE" || r.PublicationID != 4 || v.calls != 0 {
+		t.Fatal(r, e)
+	}
+}
+
+func TestOnlyPublishingMayEnterOperatorRecovery(t *testing.T) {
+	for _, status := range []string{
+		PublicationPending,
+		PublicationPublished,
+		PublicationFailed,
+		PublicationRecoveryRequired,
+	} {
+		if CanRecoverPublication(status) {
+			t.Fatalf("status %s unexpectedly recoverable", status)
+		}
+	}
+	if !CanRecoverPublication(PublicationPublishing) {
+		t.Fatal("PUBLISHING must be recoverable by an explicit operator action")
+	}
+}
+
+func TestPublisherDoesNotReportFinalStateWhenConditionalFinalizationFails(t *testing.T) {
+	s := &fakePubStore{
+		validation:  ApprovalPayloadValidation{Status: ApprovalPayloadEligible},
+		claim:       PublicationClaim{Publication: Publication{ID: 4, Status: PublicationPublishing}},
+		finalizeErr: errors.New("publication is not publishing"),
+	}
+	v := &fakeVK{id: "77"}
+	r, err := (PublisherService{Store: s, VK: v}).PublishVK(context.Background(), 1)
+	if err == nil || r.Result != "" || !s.published || v.calls != 1 {
+		t.Fatalf("result=%+v err=%v published=%v calls=%d", r, err, s.published, v.calls)
+	}
+}
 func TestPublisherBlocksAndIsIdempotent(t *testing.T) {
 	v := &fakeVK{}
 	s := &fakePubStore{validation: ApprovalPayloadValidation{Status: ApprovalPayloadNotApproved}}
@@ -82,6 +129,9 @@ func TestPublisherBlocksAndIsIdempotent(t *testing.T) {
 	r, e = (PublisherService{Store: s, VK: v}).PublishVK(context.Background(), 1)
 	if e != nil || r.Result != "IDEMPOTENT" || v.calls != 0 {
 		t.Fatal(r, e)
+	}
+	if s.loads != 0 {
+		t.Fatal("confirmed publication must not require disposable media")
 	}
 }
 func TestPublisherTextAndMedia(t *testing.T) {

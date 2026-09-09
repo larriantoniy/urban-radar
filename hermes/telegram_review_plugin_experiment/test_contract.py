@@ -30,6 +30,10 @@ class FakeReviewAction:
     def reject(self, draft_id: int, actor: str) -> None:
         self.calls.append(("reject", draft_id, actor))
 
+    def publish(self, draft_id: int) -> dict[str, object]:
+        del draft_id
+        return {"result": "BLOCKED", "reason": "TEST"}
+
 
 class FakeAdapter:
     def __init__(self, authorized: bool) -> None:
@@ -84,6 +88,29 @@ class ResultReviewAction(FakeReviewAction):
             raise self.error
         super().reject(draft_id, actor)
         return contract.ReviewBridgeResult(self.result, draft_id, "REJECTED")
+
+    def publish(self, draft_id: int) -> dict[str, object]:
+        return {"result": "PUBLISHED", "publication_id": 7, "external_post_id": "987"}
+
+
+class BridgeAction(ResultReviewAction):
+    def __init__(self, publication: dict[str, object], *, approve_error: Exception | None = None) -> None:
+        super().__init__("APPLIED", approve_error)
+        self.publication = publication
+        self.events: list[str] = []
+
+    def approve(self, draft_id: int, actor: str) -> object:
+        self.events.append("approve")
+        return super().approve(draft_id, actor)
+
+    def publish(self, draft_id: int) -> dict[str, object]:
+        del draft_id
+        self.events.append("publish")
+        return self.publication
+
+    def retry(self, publication_id: int) -> dict[str, object]:
+        self.events.append(f"retry:{publication_id}")
+        return self.publication
 
 
 class CallbackContractTests(unittest.TestCase):
@@ -156,6 +183,75 @@ class CallbackContractTests(unittest.TestCase):
 
 
 class HermesWiringContractTests(unittest.TestCase):
+    def invoke_bridge(self, action, query, *, authorized=True):
+        captured = []
+
+        class CallbackQueryHandler:
+            def __init__(self, callback_fn, pattern: str) -> None:
+                self.callback_fn = callback_fn
+                self.pattern = pattern
+
+        class InlineKeyboardButton:
+            def __init__(self, text, callback_data) -> None:
+                self.text, self.callback_data = text, callback_data
+
+        class InlineKeyboardMarkup:
+            def __init__(self, keyboard) -> None:
+                self.inline_keyboard = keyboard
+
+        telegram, telegram_ext = types.ModuleType("telegram"), types.ModuleType("telegram.ext")
+        telegram.InlineKeyboardButton, telegram.InlineKeyboardMarkup = InlineKeyboardButton, InlineKeyboardMarkup
+        telegram_ext.CallbackQueryHandler = CallbackQueryHandler
+        old_telegram, old_telegram_ext = sys.modules.get("telegram"), sys.modules.get("telegram.ext")
+        sys.modules["telegram"], sys.modules["telegram.ext"] = telegram, telegram_ext
+        try:
+            contract.build_telegram_handler(action)(types.SimpleNamespace(add_handler=captured.append), FakeAdapter(authorized))
+            asyncio.run(captured[0].callback_fn(types.SimpleNamespace(callback_query=query), object()))
+        finally:
+            if old_telegram is None:
+                del sys.modules["telegram"]
+            else:
+                sys.modules["telegram"] = old_telegram
+            if old_telegram_ext is None:
+                del sys.modules["telegram.ext"]
+            else:
+                sys.modules["telegram.ext"] = old_telegram_ext
+        return query
+
+    def test_approval_commits_before_one_publisher_invocation(self) -> None:
+        action = BridgeAction({"result": "FAILED", "publication_id": 7})
+        query = self.invoke_bridge(action, FakeCallbackQuery("ur:approve:19"))
+        self.assertEqual(action.events, ["approve", "publish"])
+        buttons = [button for row in query.text_edits[0]["reply_markup"].inline_keyboard for button in row]
+        self.assertEqual([(button.text, button.callback_data) for button in buttons], [("🔁 Повторить публикацию", "ur:pub-retry:7")])
+
+    def test_approval_failure_does_not_invoke_publisher(self) -> None:
+        action = BridgeAction({"result": "PUBLISHED"}, approve_error=contract.ReviewBridgeError("no"))
+        with self.assertLogs(contract.logger, "ERROR"):
+            query = self.invoke_bridge(action, FakeCallbackQuery("ur:approve:19"))
+        self.assertEqual(action.events, ["approve"])
+        self.assertEqual(query.text_edits, [])
+
+    def test_recovery_result_renders_reconciliation_controls(self) -> None:
+        action = BridgeAction({"result": "RECOVERY_REQUIRED", "publication_id": 7})
+        query = self.invoke_bridge(action, FakeCallbackQuery("ur:approve:19"))
+        buttons = [button for row in query.text_edits[0]["reply_markup"].inline_keyboard for button in row]
+        self.assertEqual([(button.text, button.callback_data) for button in buttons], [
+            ("✅ Пост опубликован", "ur:pub-found:7"),
+            ("❌ Пост не появился", "ur:pub-missing:7"),
+        ])
+
+    def test_unauthorized_retry_never_invokes_publisher(self) -> None:
+        action = BridgeAction({"result": "PUBLISHED"})
+        query = self.invoke_bridge(action, FakeCallbackQuery("ur:pub-retry:7"), authorized=False)
+        self.assertEqual(action.events, [])
+        self.assertEqual(query.text_edits, [])
+
+    def test_retry_passes_persisted_publication_id_to_bridge(self) -> None:
+        action = BridgeAction({"result": "PUBLISHED", "publication_id": 7})
+        self.invoke_bridge(action, FakeCallbackQuery("ur:pub-retry:7"))
+        self.assertEqual(action.events, ["retry:7"])
+
     def test_final_status_lines_cover_applied_and_idempotent_decisions(self) -> None:
         self.assertEqual(contract._review_status_line("approve", contract.ReviewBridgeResult("APPLIED", 19, "APPROVED")), "✅ Одобрено")
         self.assertEqual(contract._review_status_line("reject", contract.ReviewBridgeResult("APPLIED", 19, "REJECTED")), "❌ Отклонено")
@@ -245,7 +341,7 @@ class HermesWiringContractTests(unittest.TestCase):
         self.assertEqual(action.calls, [("approve", 19, "telegram:42")])
         self.assertEqual(query.reply_markup_edits, [])
         self.assertEqual(query.text_edits, [{
-            "text": "Новый пост готов\n\nТекст\n\nИсточник: https://example.test\n\n✅ Одобрено",
+            "text": "Новый пост готов\n\nТекст\n\nИсточник: https://example.test\n\n✅ Одобрено\n✅ Опубликовано\nVK post ID: 987",
             "reply_markup": None,
         }])
         self.assertEqual(query.answers, [{"text": "Одобрено", "show_alert": False}])
@@ -312,8 +408,11 @@ class HermesWiringContractTests(unittest.TestCase):
             else:
                 sys.modules["telegram.ext"] = old_telegram_ext
 
-        self.assertEqual(query.text_edits, [])
-        self.assertEqual(query.reply_markup_edits, [None])
+        self.assertEqual(query.text_edits, [{
+            "text": "Новый пост готов\n\nТекст\n\n✅ Одобрено\n✅ Опубликовано\nVK post ID: 987",
+            "reply_markup": None,
+        }])
+        self.assertEqual(query.reply_markup_edits, [])
         self.assertEqual(query.answers, [{"text": "Уже одобрено", "show_alert": False}])
 
     def test_callback_error_logs_and_returns_alert_without_keyboard_edit(self) -> None:
@@ -406,6 +505,37 @@ class CLIReviewActionTests(unittest.TestCase):
                 action = contract.CLIReviewAction("urban-radar", lambda *args, **kwargs: result)
                 with self.assertRaises(contract.ReviewBridgeError):
                     action.approve(19, "telegram:42")
+
+    def test_publish_uses_existing_cli_and_accepts_only_known_result(self) -> None:
+        calls = []
+
+        def runner(argv, **kwargs):
+            calls.append((argv, kwargs))
+            return types.SimpleNamespace(returncode=0, stdout=json.dumps({"result": "FAILED", "publication_id": 7}))
+
+        value = contract.CLIReviewAction("urban-radar", runner).publish(19)
+        self.assertEqual(value, {"result": "FAILED", "publication_id": 7})
+        self.assertEqual(calls[0][0], ["urban-radar", "content", "publish", "19"])
+
+    def test_retry_addresses_one_persisted_publication(self) -> None:
+        calls = []
+
+        def runner(argv, **kwargs):
+            calls.append((argv, kwargs))
+            return types.SimpleNamespace(returncode=0, stdout=json.dumps({"result": "FAILED", "publication_id": 7}))
+
+        self.assertEqual(contract.CLIReviewAction("urban-radar", runner).retry(7)["publication_id"], 7)
+        self.assertEqual(calls[0][0], ["urban-radar", "publication", "retry", "7"])
+
+    def test_publication_result_text_and_controls_are_deterministic(self) -> None:
+        self.assertEqual(
+            contract._publication_text("Карточка", {"result": "BLOCKED", "reason": "PAYLOAD_MISMATCH"}),
+            "Карточка\n\n✅ Одобрено\n⚠️ Публикация заблокирована: PAYLOAD_MISMATCH",
+        )
+        self.assertEqual(
+            contract._publication_text("Карточка\n\n✅ Одобрено\n⚠️ Публикация не выполнена", {"result": "PUBLISHED", "external_post_id": "987"}),
+            "Карточка\n\n✅ Одобрено\n✅ Опубликовано\nVK post ID: 987",
+        )
 
 
 class ReviewRuntimePreflightTests(unittest.TestCase):

@@ -287,6 +287,29 @@ func TestPostgresStoreContentDraftReviewTransition(t *testing.T) {
 	if _, err := service.ApproveDraft(ctx, rejected.ContentDraftID, "operator:radar"); !errors.Is(err, content.ErrInvalidReviewTransition) {
 		t.Fatalf("rejected -> approved err=%v", err)
 	}
+
+	var publicationID int64
+	if err := db.QueryRowContext(ctx, `INSERT INTO publications(content_draft_id,platform,status,created_at,updated_at) VALUES($1,'VK','PUBLISHING',$2,$2) RETURNING publication_id`, draft.ContentDraftID, now).Scan(&publicationID); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := store.RecoverPublication(ctx, publicationID, "operator:recovery", now.Add(time.Minute))
+	if err != nil || recovered.Status != content.PublicationRecoveryRequired || recovered.LastError != "OPERATOR_RECOVERY_REQUIRED" {
+		t.Fatalf("recovered=%+v err=%v", recovered, err)
+	}
+	var recoveredAt time.Time
+	var recoveredBy string
+	if err := db.QueryRowContext(ctx, `SELECT recovery_required_at,recovery_required_by FROM publications WHERE publication_id=$1`, publicationID).Scan(&recoveredAt, &recoveredBy); err != nil || !recoveredAt.Equal(now.Add(time.Minute)) || recoveredBy != "operator:recovery" {
+		t.Fatalf("recovery audit at=%s by=%q err=%v", recoveredAt, recoveredBy, err)
+	}
+	if _, err := store.RecoverPublication(ctx, publicationID, "operator:recovery", now.Add(2*time.Minute)); err == nil {
+		t.Fatal("RECOVERY_REQUIRED must not be recovered again")
+	}
+	if reconciled, err := store.ReconcilePublication(ctx, publicationID, "MARK_NOT_PUBLISHED", "", "operator:reconcile", now.Add(3*time.Minute)); err != nil || reconciled.Status != content.PublicationFailed {
+		t.Fatalf("reconciled=%+v err=%v", reconciled, err)
+	}
+	if _, err := store.RecoverPublication(ctx, publicationID, "operator:recovery", now.Add(4*time.Minute)); err == nil {
+		t.Fatal("FAILED must not enter operator recovery")
+	}
 }
 
 func TestPostgresStoreReviewNotificationDelivery(t *testing.T) {

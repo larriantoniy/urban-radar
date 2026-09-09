@@ -10,7 +10,7 @@ import (
 
 func TestRuntimeMigrationProtectsCurrentInvariants(t *testing.T) {
 	var sql string
-	for _, name := range []string{"../migrations/001_source_items.sql", "../migrations/002_incremental_news_runtime.sql", "../migrations/003_selective_source_materialization.sql", "../migrations/004_news_check_run_lifecycle.sql", "../migrations/005_content_drafts.sql", "../migrations/006_content_draft_review_notes.sql", "../migrations/007_content_draft_persisted_review.sql", "../migrations/008_content_draft_review_notifications.sql", "../migrations/009_content_media.sql", "../migrations/010_content_draft_approved_payload_hash.sql", "../migrations/011_publications.sql", "../migrations/012_publications_recovery_required.sql", "../migrations/013_publications_reconciliation_audit.sql"} {
+	for _, name := range []string{"../migrations/001_source_items.sql", "../migrations/002_incremental_news_runtime.sql", "../migrations/003_selective_source_materialization.sql", "../migrations/004_news_check_run_lifecycle.sql", "../migrations/005_content_drafts.sql", "../migrations/006_content_draft_review_notes.sql", "../migrations/007_content_draft_persisted_review.sql", "../migrations/008_content_draft_review_notifications.sql", "../migrations/009_content_media.sql", "../migrations/010_content_draft_approved_payload_hash.sql", "../migrations/011_publications.sql", "../migrations/012_publications_recovery_required.sql", "../migrations/013_publications_reconciliation_audit.sql", "../migrations/014_publications_operator_recovery_audit.sql"} {
 		data, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)

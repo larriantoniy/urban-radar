@@ -49,6 +49,14 @@ func main() {
 		publicationReconcile(os.Args[3:])
 		return
 	}
+	if len(os.Args) >= 3 && os.Args[1] == "publication" && os.Args[2] == "retry" {
+		publicationRetry(os.Args[3:])
+		return
+	}
+	if len(os.Args) >= 3 && os.Args[1] == "publication" && os.Args[2] == "recover" {
+		publicationRecover(os.Args[3:])
+		return
+	}
 	if len(os.Args) >= 3 && os.Args[1] == "media" && os.Args[2] == "attach" {
 		mediaAttach(os.Args[3:])
 		return
@@ -299,7 +307,7 @@ func writeSummary(summary newscheck.Summary, err error) {
 }
 
 func usage() string {
-	return "usage: urban-radar tgl list | urban-radar tgl get <url> | urban-radar news check [--preflight] [flags] | urban-radar content experiment-v1 [--item source/source_item_id] [flags] | urban-radar content review approve|reject <draft-id> --actor <actor> | urban-radar content review-notify [--draft-id <id>] | urban-radar content publish <draft-id> | urban-radar media attach <draft-id> --actor <actor> | urban-radar media cleanup [--dry-run]"
+	return "usage: urban-radar tgl list | urban-radar tgl get <url> | urban-radar news check [--preflight] [flags] | urban-radar content experiment-v1 [--item source/source_item_id] [flags] | urban-radar content review approve|reject <draft-id> --actor <actor> | urban-radar content review-notify [--draft-id <id>] | urban-radar content publish <draft-id> | urban-radar publication retry <publication-id> | urban-radar publication recover <publication-id> --actor <actor> | urban-radar publication reconcile <publication-id> --published --external-post-id <id> --actor <actor> | --not-published --actor <actor> | urban-radar media attach <draft-id> --actor <actor> | urban-radar media cleanup [--dry-run]"
 }
 
 func contentPublish(args []string) {
@@ -320,15 +328,25 @@ func contentPublish(args []string) {
 	}
 	defer db.Close()
 	vk, e := publisher.NewVKClientFromEnv()
+	var publisherBoundary content.VKPublisher = vk
 	if e != nil {
-		_ = json.NewEncoder(os.Stdout).Encode(content.PublishResult{Result: "FAILED", Reason: "VK_CONFIG"})
-		return
+		// Let the persisted Publisher state machine decide first: a confirmed
+		// PUBLISHED publication must remain idempotent even if VK config is now
+		// absent. A new attempt then records this as a definitive pre-side-effect
+		// failure.
+		publisherBoundary = unavailableVKPublisher{}
 	}
-	r, e := (content.PublisherService{Store: storage.NewPostgresStore(db), VK: vk, MediaRoot: content.MediaRootFromEnv()}).PublishVK(context.Background(), id)
+	r, e := (content.PublisherService{Store: storage.NewPostgresStore(db), VK: publisherBoundary, MediaRoot: content.MediaRootFromEnv()}).PublishVK(context.Background(), id)
 	if e != nil {
 		fail(e.Error())
 	}
 	_ = json.NewEncoder(os.Stdout).Encode(r)
+}
+
+type unavailableVKPublisher struct{}
+
+func (unavailableVKPublisher) Publish(context.Context, string, *content.PublishMedia) (string, error) {
+	return "", errors.New("VK_CONFIG")
 }
 func publicationReconcile(args []string) {
 	if len(args) < 1 {
@@ -373,7 +391,75 @@ func publicationReconcile(args []string) {
 	if action == "MARK_PUBLISHED" {
 		result = "RESOLVED_PUBLISHED"
 	}
-	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"result": result, "publication_id": p.ID, "external_post_id": p.ExternalPostID})
+	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"result": result, "publication_id": p.ID, "draft_id": p.ContentDraftID, "external_post_id": p.ExternalPostID})
+}
+
+func publicationRetry(args []string) {
+	if len(args) != 1 {
+		fail("usage: urban-radar publication retry <publication-id>")
+	}
+	id, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil || id <= 0 {
+		fail("publication-id must be positive")
+	}
+	u, err := storage.DatabaseURLFromEnv()
+	if err != nil {
+		fail(err.Error())
+	}
+	db, err := storage.OpenPostgres(context.Background(), u)
+	if err != nil {
+		fail(err.Error())
+	}
+	defer db.Close()
+	store := storage.NewPostgresStore(db)
+	p, err := store.LoadPublication(context.Background(), id)
+	if err != nil || p.Status != content.PublicationFailed {
+		_ = json.NewEncoder(os.Stdout).Encode(content.PublishResult{Result: "BLOCKED", PublicationID: id, Reason: "RETRY_NOT_ALLOWED"})
+		return
+	}
+	vk, err := publisher.NewVKClientFromEnv()
+	var boundary content.VKPublisher = vk
+	if err != nil {
+		boundary = unavailableVKPublisher{}
+	}
+	r, err := (content.PublisherService{Store: store, VK: boundary, MediaRoot: content.MediaRootFromEnv()}).PublishVK(context.Background(), p.ContentDraftID)
+	if err != nil {
+		fail(err.Error())
+	}
+	if r.PublicationID == 0 {
+		r.PublicationID = p.ID
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(r)
+}
+
+func publicationRecover(args []string) {
+	if len(args) < 1 {
+		fail("usage: urban-radar publication recover <publication-id> --actor <actor>")
+	}
+	id, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil || id <= 0 {
+		fail("publication-id must be positive")
+	}
+	flags := flag.NewFlagSet("publication recover", flag.ContinueOnError)
+	actor := flags.String("actor", "", "operator actor")
+	if err = flags.Parse(args[1:]); err != nil || flags.NArg() != 0 || strings.TrimSpace(*actor) == "" {
+		fail("usage: urban-radar publication recover <publication-id> --actor <actor>")
+	}
+	u, err := storage.DatabaseURLFromEnv()
+	if err != nil {
+		fail(err.Error())
+	}
+	db, err := storage.OpenPostgres(context.Background(), u)
+	if err != nil {
+		fail(err.Error())
+	}
+	defer db.Close()
+	p, err := storage.NewPostgresStore(db).RecoverPublication(context.Background(), id, *actor, time.Now().UTC())
+	if err != nil {
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"result": "BLOCKED", "publication_id": id})
+		return
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"result": "RECOVERY_REQUIRED", "publication_id": p.ID, "draft_id": p.ContentDraftID})
 }
 
 func mediaAttach(args []string) {

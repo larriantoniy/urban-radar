@@ -54,8 +54,16 @@ type PublishPayload struct {
 type PublicationClaim struct {
 	Publication      Publication
 	Idempotent       bool
+	InProgress       bool
 	RecoveryRequired bool
 }
+
+// CanRecoverPublication permits only an explicit operator recovery of a
+// publication whose in-progress attempt may have been interrupted.
+func CanRecoverPublication(status string) bool {
+	return status == PublicationPublishing
+}
+
 type PublicationStore interface {
 	ValidateApprovedPayload(context.Context, int64) (ApprovalPayloadValidation, error)
 	LoadApprovedPublicationPayload(context.Context, int64) (PublishPayload, error)
@@ -93,13 +101,6 @@ func (s PublisherService) PublishVK(ctx context.Context, draftID int64) (Publish
 	if v.Status != ApprovalPayloadEligible {
 		return PublishResult{Result: "BLOCKED", Reason: string(v.Status)}, nil
 	}
-	p, e := s.Store.LoadApprovedPublicationPayload(ctx, draftID)
-	if e != nil {
-		return PublishResult{}, e
-	}
-	if e = verifyPublishMedia(s.MediaRoot, p.Media); e != nil {
-		return PublishResult{Result: "BLOCKED", Reason: e.Error()}, nil
-	}
 	now := time.Now().UTC()
 	if s.Now != nil {
 		now = s.Now().UTC()
@@ -111,8 +112,24 @@ func (s PublisherService) PublishVK(ctx context.Context, draftID int64) (Publish
 	if c.Idempotent {
 		return PublishResult{Result: "IDEMPOTENT", PublicationID: c.Publication.ID, ExternalPostID: c.Publication.ExternalPostID}, nil
 	}
+	if c.InProgress {
+		return PublishResult{Result: "BLOCKED", PublicationID: c.Publication.ID, Reason: "PUBLISHING_ACTIVE"}, nil
+	}
 	if c.RecoveryRequired {
 		return PublishResult{Result: "RECOVERY_REQUIRED", PublicationID: c.Publication.ID, Reason: "PUBLISHING_RECOVERY_REQUIRED"}, nil
+	}
+	p, e := s.Store.LoadApprovedPublicationPayload(ctx, draftID)
+	if e != nil {
+		if markErr := s.Store.MarkPublicationFailed(ctx, c.Publication.ID, PlatformPublicationVK, "PAYLOAD_LOAD_ERROR", now); markErr != nil {
+			return PublishResult{}, markErr
+		}
+		return PublishResult{}, e
+	}
+	if e = verifyPublishMedia(s.MediaRoot, p.Media); e != nil {
+		if markErr := s.Store.MarkPublicationFailed(ctx, c.Publication.ID, PlatformPublicationVK, e.Error(), now); markErr != nil {
+			return PublishResult{}, markErr
+		}
+		return PublishResult{Result: "BLOCKED", PublicationID: c.Publication.ID, Reason: e.Error()}, nil
 	}
 	id, e := s.VK.Publish(ctx, p.Text, p.Media)
 	if e != nil {
@@ -123,7 +140,9 @@ func (s PublisherService) PublishVK(ctx context.Context, draftID int64) (Publish
 			}
 			return PublishResult{Result: "RECOVERY_REQUIRED", PublicationID: c.Publication.ID, Reason: "VK_FINAL_SIDE_EFFECT_AMBIGUOUS"}, nil
 		}
-		_ = s.Store.MarkPublicationFailed(ctx, c.Publication.ID, PlatformPublicationVK, e.Error(), now)
+		if markErr := s.Store.MarkPublicationFailed(ctx, c.Publication.ID, PlatformPublicationVK, e.Error(), now); markErr != nil {
+			return PublishResult{}, markErr
+		}
 		return PublishResult{Result: "FAILED", PublicationID: c.Publication.ID, Reason: "VK_ERROR"}, nil
 	}
 	if e = s.Store.MarkPublicationPublished(ctx, c.Publication.ID, PlatformPublicationVK, id, now); e != nil {

@@ -13,6 +13,7 @@ import logging
 import os
 import subprocess
 import time
+import types
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -22,7 +23,7 @@ CALLBACK_PATTERN = r"^ur:"
 MAX_CALLBACK_DATA_BYTES = 64
 MAX_DRAFT_ID_DIGITS = 19
 _DRAFT_ID_RE = re.compile(r"^[1-9][0-9]{0,18}$")
-_ACTIONS = frozenset({"approve", "reject", "attach", "pub-found", "pub-missing"})
+_ACTIONS = frozenset({"approve", "reject", "attach", "pub-found", "pub-missing", "pub-retry"})
 _MAX_PENDING_ATTACHMENTS = 128
 _PENDING_ATTACHMENT_SECONDS = 15 * 60
 _FINAL_STATUS_LINES = frozenset({
@@ -43,6 +44,7 @@ class ReviewAction(Protocol):
     def reject(self, draft_id: int, actor: str) -> object: ...
 
     def attach(self, draft_id: int, actor: str, image: bytes) -> None: ...
+
     def reconcile(self, publication_id: int, published: bool, post_id: str, actor: str) -> object: ...
 
 
@@ -122,13 +124,58 @@ class CLIReviewAction:
             raise ReviewBridgeError("Urban Radar media command returned malformed JSON") from exc
         if not isinstance(payload, dict) or payload.get("result") != "ATTACHED" or payload.get("draft_id") != draft_id:
             raise ReviewBridgeError("Urban Radar media command confirmed the wrong draft")
+
+    def publish(self, draft_id: int) -> dict[str, object]:
+        """Invoke the deterministic Publisher only after durable approval."""
+        done = self.runner(
+            [self.command, "content", "publish", str(draft_id)],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        if done.returncode:
+            raise ReviewBridgeError("Urban Radar publisher command failed")
+        try:
+            value = json.loads(done.stdout)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ReviewBridgeError("Urban Radar publisher command returned malformed JSON") from exc
+        if not isinstance(value, dict) or value.get("result") not in {
+            "PUBLISHED", "IDEMPOTENT", "FAILED", "RECOVERY_REQUIRED", "BLOCKED",
+        }:
+            raise ReviewBridgeError("Urban Radar publisher command returned an unknown result")
+        return value
+
+    def retry(self, publication_id: int) -> dict[str, object]:
+        done = self.runner(
+            [self.command, "publication", "retry", str(publication_id)],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        if done.returncode:
+            raise ReviewBridgeError("Urban Radar publication retry command failed")
+        try:
+            value = json.loads(done.stdout)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ReviewBridgeError("Urban Radar publication retry returned malformed JSON") from exc
+        if not isinstance(value, dict) or value.get("result") not in {
+            "PUBLISHED", "IDEMPOTENT", "FAILED", "RECOVERY_REQUIRED", "BLOCKED",
+        } or value.get("publication_id") != publication_id:
+            raise ReviewBridgeError("Urban Radar publication retry did not confirm the addressed publication")
+        return value
+
     def reconcile(self, publication_id: int, published: bool, post_id: str, actor: str) -> object:
-        args=[self.command,"publication","reconcile",str(publication_id),"--actor",actor]
-        args += ["--published","--external-post-id",post_id] if published else ["--not-published"]
-        done=self.runner(args,capture_output=True,check=False,text=True)
-        if done.returncode: raise ReviewBridgeError("Urban Radar reconciliation command failed")
-        value=json.loads(done.stdout)
-        if not isinstance(value,dict) or value.get("result") not in {"RESOLVED_PUBLISHED","RESOLVED_NOT_PUBLISHED"}: raise ReviewBridgeError("Urban Radar reconciliation was not confirmed")
+        args = [self.command, "publication", "reconcile", str(publication_id), "--actor", actor]
+        args += ["--published", "--external-post-id", post_id] if published else ["--not-published"]
+        done = self.runner(args, capture_output=True, check=False, text=True)
+        if done.returncode:
+            raise ReviewBridgeError("Urban Radar reconciliation command failed")
+        try:
+            value = json.loads(done.stdout)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ReviewBridgeError("Urban Radar reconciliation returned malformed JSON") from exc
+        if not isinstance(value, dict) or value.get("result") not in {"RESOLVED_PUBLISHED", "RESOLVED_NOT_PUBLISHED"}:
+            raise ReviewBridgeError("Urban Radar reconciliation was not confirmed")
         return value
 
 
@@ -305,6 +352,70 @@ def _success_message(action: str, result: object | None) -> str:
     return "Решение сохранено"
 
 
+def _publication_status_line(result: dict[str, object]) -> str:
+    status = result["result"]
+    if status == "UNKNOWN":
+        return "⚠️ Не удалось определить результат публикации"
+    if status == "PUBLISHED":
+        return "✅ Публикация подтверждена" if result.get("confirmed") else "✅ Опубликовано"
+    if status == "IDEMPOTENT":
+        return "✅ Уже опубликовано"
+    if status == "FAILED":
+        return "⚠️ Публикация не выполнена"
+    if status == "RECOVERY_REQUIRED":
+        return "⚠️ Статус публикации требует проверки"
+    reason = result.get("reason")
+    suffix = f": {reason}" if isinstance(reason, str) and reason else ""
+    return "⚠️ Публикация заблокирована" + suffix
+
+
+def _publication_text(text: str, result: dict[str, object]) -> str:
+    """Replace only the dynamic approval/publication footer on a review card."""
+    for marker in ("\n\n✅ Одобрено", "\n\n✅ Уже было одобрено"):
+        if marker in text:
+            text = text.split(marker, 1)[0]
+            break
+    lines = ["✅ Одобрено", _publication_status_line(result)]
+    post_id = result.get("external_post_id")
+    if result.get("result") in {"PUBLISHED", "IDEMPOTENT"} and isinstance(post_id, str) and post_id:
+        lines.append(f"VK post ID: {post_id}")
+    return text + "\n\n" + "\n".join(lines)
+
+
+def _publication_markup(result: dict[str, object], draft_id: int) -> object | None:
+    """Build controls solely from the current deterministic Publisher result."""
+    status = result["result"]
+    if status not in {"FAILED", "RECOVERY_REQUIRED"}:
+        return None
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    publication_id = result.get("publication_id")
+    if not isinstance(publication_id, int) or publication_id <= 0:
+        return None
+    if status == "FAILED":
+        return InlineKeyboardMarkup([[InlineKeyboardButton("🔁 Повторить публикацию", callback_data=f"ur:pub-retry:{publication_id}")]])
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Пост опубликован", callback_data=f"ur:pub-found:{publication_id}"),
+        InlineKeyboardButton("❌ Пост не появился", callback_data=f"ur:pub-missing:{publication_id}"),
+    ]])
+
+
+async def _render_publication_result(query: object, draft_id: int, result: dict[str, object]) -> None:
+    """Keep one review card; UI failures cannot alter durable approval state."""
+    message = getattr(query, "message", None)
+    text = getattr(message, "text", None)
+    if not isinstance(text, str):
+        logger.error("Urban Radar publisher bridge cannot update review message text")
+        return
+    try:
+        edit_text = getattr(query, "edit_message_text", None)
+        if not callable(edit_text):
+            raise RuntimeError("edit_message_text is unavailable")
+        await edit_text(text=_publication_text(text, result), reply_markup=_publication_markup(result, draft_id))
+    except Exception:
+        logger.exception("Urban Radar publisher bridge message update failed")
+
+
 def build_telegram_handler(action: ReviewAction):
     """Return a pinned-Hermes PTB handler factory for the ``ur:`` namespace."""
 
@@ -334,15 +445,39 @@ def build_telegram_handler(action: ReviewAction):
             pending[identity[1]]=(parsed.draft_id, now + _PENDING_ATTACHMENT_SECONDS)
             await _answer_callback(query,"Отправьте одно фото ответом на эту карточку.",show_alert=False)
             return
-        if parsed and parsed.action in {"pub-found", "pub-missing"}:
-            identity=authorized(query)
-            if identity is None: await _answer_callback(query,"Действие недоступно.",show_alert=True); return
-            if parsed.action=="pub-missing":
-                try: action.reconcile(parsed.draft_id,False,"",f"telegram:{identity[0]}")
-                except Exception: await _answer_callback(query,"Не удалось сохранить решение.",show_alert=True); return
-                await _answer_callback(query,"Публикация помечена как не выполненная.",show_alert=False); return
-            pending_reconciliation[identity[1]]=(parsed.draft_id,time.monotonic()+_PENDING_ATTACHMENT_SECONDS)
-            await _answer_callback(query,"Пришлите ID поста VK ответом на это сообщение. Например: 987",show_alert=False); return
+        if parsed and parsed.action in {"pub-found", "pub-missing", "pub-retry"}:
+            identity = authorized(query)
+            if identity is None:
+                await _answer_callback(query, "Действие недоступно.", show_alert=True)
+                return
+            actor = f"telegram:{identity[0]}"
+            if parsed.action == "pub-retry":
+                try:
+                    result = getattr(action, "retry")(parsed.draft_id)
+                except Exception:
+                    logger.exception("Urban Radar publisher retry bridge failed")
+                    await _render_publication_result(query, parsed.draft_id, {"result": "UNKNOWN"})
+                    await _answer_callback(query, "Не удалось определить результат публикации.", show_alert=True)
+                    return
+                await _render_publication_result(query, parsed.draft_id, result)
+                await _answer_callback(query, "Публикация обработана.", show_alert=False)
+                return
+            if parsed.action == "pub-missing":
+                try:
+                    result = action.reconcile(parsed.draft_id, False, "", actor)
+                    draft_id = result.get("draft_id") if isinstance(result, dict) else None
+                    if not isinstance(draft_id, int) or draft_id <= 0:
+                        raise ReviewBridgeError("Urban Radar reconciliation returned no draft ID")
+                except Exception:
+                    logger.exception("Urban Radar reconciliation failed")
+                    await _answer_callback(query, "Не удалось сохранить решение.", show_alert=True)
+                    return
+                await _render_publication_result(query, draft_id, {"result": "FAILED", "publication_id": parsed.draft_id})
+                await _answer_callback(query, "Публикация помечена как не выполненная.", show_alert=False)
+                return
+            pending_reconciliation[identity[1]] = (parsed.draft_id, time.monotonic() + _PENDING_ATTACHMENT_SECONDS)
+            await _answer_callback(query, "Пришлите ID поста VK ответом на это сообщение. Например: 987", show_alert=False)
+            return
         captured_action = CapturingReviewAction(action)
         try:
             handled = await handle_callback_query(query, adapter, captured_action)
@@ -352,6 +487,19 @@ def build_telegram_handler(action: ReviewAction):
             return
         if not handled or parsed is None:
             await _answer_callback(query, "Действие недоступно.", show_alert=True)
+            return
+        if parsed.action == "approve":
+            # The review subprocess has returned only after its transaction
+            # commits. Publisher is deliberately a second, separate process.
+            try:
+                publication = getattr(action, "publish")(parsed.draft_id)
+            except Exception:
+                logger.exception("Urban Radar publisher bridge failed after approval")
+                await _render_publication_result(query, parsed.draft_id, {"result": "UNKNOWN"})
+                await _answer_callback(query, "Одобрено; не удалось определить результат публикации.", show_alert=False)
+                return
+            await _render_publication_result(query, parsed.draft_id, publication)
+            await _answer_callback(query, _success_message(parsed.action, captured_action.result), show_alert=False)
             return
         await _finalize_review_message(query, _review_status_line(parsed.action, captured_action.result))
         await _answer_callback(query, _success_message(parsed.action, captured_action.result), show_alert=False)
@@ -402,9 +550,20 @@ def build_telegram_handler(action: ReviewAction):
             checker=getattr(adapter,"_is_callback_user_authorized",None);chat=getattr(message,"chat",None)
             if not callable(checker) or not checker(user_id,chat_id=key[1],chat_type=getattr(chat,"type",None),thread_id=key[2],user_name=getattr(sender,"first_name",None)):return
             try:
-                action.reconcile(entry[0],True,str(getattr(message,"text","")).strip(),f"telegram:{user_id}");pending_reconciliation.pop(key,None)
-                await reply.edit_text(text=getattr(reply,"text","")+"\n\n✅ Публикация подтверждена",reply_markup=None)
-            except Exception: await message.reply_text("Не удалось подтвердить ID поста.")
+                result = action.reconcile(entry[0], True, str(getattr(message, "text", "")).strip(), f"telegram:{user_id}")
+                draft_id = result.get("draft_id") if isinstance(result, dict) else None
+                post_id = result.get("external_post_id") if isinstance(result, dict) else None
+                if not isinstance(draft_id, int) or draft_id <= 0:
+                    raise ReviewBridgeError("Urban Radar reconciliation returned no draft ID")
+                pending_reconciliation.pop(key, None)
+                await _render_publication_result(
+                    types.SimpleNamespace(message=reply, edit_message_text=reply.edit_text),
+                    draft_id,
+                    {"result": "PUBLISHED", "publication_id": entry[0], "external_post_id": post_id, "confirmed": True},
+                )
+            except Exception:
+                logger.exception("Urban Radar reconciliation post-ID handling failed")
+                await message.reply_text("Не удалось подтвердить ID поста.")
         application.add_handler(MessageHandler(filters.TEXT & filters.REPLY, on_reconciliation_text))
 
     adapter = None

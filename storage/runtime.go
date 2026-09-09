@@ -65,7 +65,11 @@ func (r *PostgresStore) ClaimPublication(ctx context.Context, draftID int64, pla
 	c := content.PublicationClaim{Publication: p}
 	if p.Status == content.PublicationPublished {
 		c.Idempotent = true
-	} else if p.Status == content.PublicationPublishing || p.Status == content.PublicationRecoveryRequired {
+	} else if p.Status == content.PublicationPublishing {
+		// This row may belong to an active VK call. A second claimant has no
+		// evidence that its owner crashed, so it must not alter the state.
+		c.InProgress = true
+	} else if p.Status == content.PublicationRecoveryRequired {
 		c.RecoveryRequired = true
 	} else {
 		_, e = tx.ExecContext(ctx, `UPDATE publications SET status='PUBLISHING',attempt_count=attempt_count+1,last_error=NULL,updated_at=$2 WHERE publication_id=$1`, p.ID, now)
@@ -79,6 +83,42 @@ func (r *PostgresStore) ClaimPublication(ctx context.Context, draftID int64, pla
 		return c, e
 	}
 	return c, nil
+}
+
+// LoadPublication returns the authoritative persisted publication addressed by
+// an operator callback. It deliberately does not infer state from Telegram.
+func (r *PostgresStore) LoadPublication(ctx context.Context, id int64) (content.Publication, error) {
+	var p content.Publication
+	err := r.db.QueryRowContext(ctx, `SELECT publication_id,content_draft_id,platform,status,attempt_count,COALESCE(last_error,''),COALESCE(external_post_id,''),created_at,COALESCE(published_at,'epoch'::timestamptz),updated_at FROM publications WHERE publication_id=$1`, id).Scan(&p.ID, &p.ContentDraftID, &p.Platform, &p.Status, &p.AttemptCount, &p.LastError, &p.ExternalPostID, &p.CreatedAt, &p.PublishedAt, &p.UpdatedAt)
+	return p, err
+}
+
+// RecoverPublication records an operator's explicit decision that a stuck
+// PUBLISHING attempt needs the existing reconciliation flow. It never calls VK.
+func (r *PostgresStore) RecoverPublication(ctx context.Context, id int64, actor string, now time.Time) (content.Publication, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return content.Publication{}, err
+	}
+	defer tx.Rollback()
+	var p content.Publication
+	err = tx.QueryRowContext(ctx, `SELECT publication_id,content_draft_id,platform,status,attempt_count,COALESCE(last_error,''),COALESCE(external_post_id,''),created_at,COALESCE(published_at,'epoch'::timestamptz),updated_at FROM publications WHERE publication_id=$1 FOR UPDATE`, id).Scan(&p.ID, &p.ContentDraftID, &p.Platform, &p.Status, &p.AttemptCount, &p.LastError, &p.ExternalPostID, &p.CreatedAt, &p.PublishedAt, &p.UpdatedAt)
+	if err != nil {
+		return p, err
+	}
+	if !content.CanRecoverPublication(p.Status) {
+		return p, errors.New("publication recovery blocked")
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE publications SET status='RECOVERY_REQUIRED',last_error='OPERATOR_RECOVERY_REQUIRED',recovery_required_at=$2,recovery_required_by=$3,updated_at=$2 WHERE publication_id=$1 AND status='PUBLISHING'`, id, now, actor)
+	if err != nil {
+		return p, err
+	}
+	p.Status = content.PublicationRecoveryRequired
+	p.LastError = "OPERATOR_RECOVERY_REQUIRED"
+	if err = tx.Commit(); err != nil {
+		return p, err
+	}
+	return p, nil
 }
 func (r *PostgresStore) MarkPublicationPublished(ctx context.Context, id int64, platform, external string, now time.Time) error {
 	result, e := r.db.ExecContext(ctx, `UPDATE publications SET status='PUBLISHED',external_post_id=$3,published_at=$4,updated_at=$4,last_error=NULL WHERE publication_id=$1 AND platform=$2 AND status='PUBLISHING'`, id, platform, external, now)
