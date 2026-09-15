@@ -63,6 +63,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN must be set}
+      TELEGRAM_HOME_CHANNEL: ${TELEGRAM_HOME_CHANNEL:?TELEGRAM_HOME_CHANNEL must be set}
+      TELEGRAM_ALLOWED_USERS: ${TELEGRAM_ALLOWED_USERS:?TELEGRAM_ALLOWED_USERS must be set}
       ALL_PROXY: socks5://host.docker.internal:10808
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
       HERMES_HOME: /var/lib/hermes
