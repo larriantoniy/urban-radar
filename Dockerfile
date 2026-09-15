@@ -27,8 +27,15 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends git \
  && rm -rf /var/lib/apt/lists/* \
  && python -m venv /opt/hermes-venv \
- && /opt/hermes-venv/bin/pip install --no-cache-dir --upgrade pip \
- && /opt/hermes-venv/bin/pip install --no-cache-dir "git+https://github.com/NousResearch/hermes-agent.git@${HERMES_REF}"
+ && /opt/hermes-venv/bin/pip install --no-cache-dir --upgrade pip uv \
+ && git init -q /opt/hermes-src \
+ && git -C /opt/hermes-src remote add origin https://github.com/NousResearch/hermes-agent.git \
+ && git -C /opt/hermes-src fetch -q --depth=1 origin "${HERMES_REF}" \
+ && git -C /opt/hermes-src checkout -q --detach FETCH_HEAD \
+ && test "$(git -C /opt/hermes-src rev-parse HEAD)" = "${HERMES_REF}" \
+ && cd /opt/hermes-src \
+ && UV_PROJECT_ENVIRONMENT=/opt/hermes-venv /opt/hermes-venv/bin/uv sync --locked \
+ && /opt/hermes-venv/bin/hermes --help >/dev/null
 
 FROM python:3.12-slim-bookworm AS runtime
 RUN apt-get update \
@@ -38,6 +45,7 @@ RUN apt-get update \
  && useradd --uid 10001 --gid urban-radar --create-home --home-dir /home/urban-radar --shell /usr/sbin/nologin urban-radar
 
 COPY --from=hermes-builder /opt/hermes-venv /opt/hermes-venv
+COPY --from=hermes-builder /opt/hermes-src /opt/hermes-src
 COPY --from=go-builder /out/urban-radar /usr/local/bin/urban-radar
 COPY --from=go-builder /out/tgl-mcp /usr/local/bin/tgl-mcp
 COPY --from=go-builder /out/zakupki-mcp /usr/local/bin/zakupki-mcp
