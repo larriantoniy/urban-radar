@@ -215,10 +215,10 @@ Ubuntu cron → host wrapper → flock -n → docker compose run --rm urban-rada
                                       → Hermes / configured MCP tools → PostgreSQL
 ```
 
-Cron runs on the Ubuntu host. `postgres` is the only long-running Compose
-service; `urban-radar` is created for one CLI invocation and removed after it
-exits. PostgreSQL is private to the Compose network and persists in the named
-`postgres_data` volume.
+Cron runs on the Ubuntu host. `postgres` and `hermes-gateway` are the
+long-running Compose services; `urban-radar` is created for one CLI invocation
+and removed after it exits. PostgreSQL is private to the Compose network and
+persists in the named `postgres_data` volume.
 
 ### Install Docker and deploy
 
@@ -279,8 +279,42 @@ Edit `/opt/urban-radar/.env` from `.env.example`. Required values are
 `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, a URL-escaped
 `DATABASE_URL` whose host is `postgres` and port is `5432`,
 `ZAKUPKI_SEARCH_URL`, `HERMES_HOME_HOST_DIR`, `URBAN_RADAR_MEDIA_HOST_DIR`,
-`VK_ACCESS_TOKEN`, and `VK_GROUP_ID`. Do not put the database URL
-or any provider credential in cron or Compose source files.
+`VK_ACCESS_TOKEN`, `VK_GROUP_ID`, `TELEGRAM_BOT_TOKEN`,
+`TELEGRAM_HOME_CHANNEL`, and `TELEGRAM_ALLOWED_USERS`.
+`TELEGRAM_HOME_CHANNEL_NAME` is optional deployment metadata; current Compose
+does not inject it into a container. `URBAN_RADAR_REVIEW_COMMAND_TIMEOUT_SECONDS`
+is the bounded gateway-to-CLI timeout and defaults to `45` seconds. Do not put
+the database URL or any provider credential in cron or Compose source files.
+
+`docker compose run --rm urban-radar news check` still interpolates the entire
+`compose.yaml` before selecting the one-shot service. Therefore all required
+variables, including the Telegram variables used by `hermes-gateway`, must be
+present in `/opt/urban-radar/.env` even when only `urban-radar` is run. Keep
+the `${VAR:?required}` Compose guards intact: they fail closed on an incomplete
+production configuration.
+
+### Host SOCKS/Xray dependency
+
+The current Compose topology sets
+`ALL_PROXY=socks5://host.docker.internal:10808` for both Urban Radar and the
+Hermes gateway. The production host must provide a SOCKS5 listener there; the
+current deployment uses Xray. On Linux Docker, Compose maps
+`host.docker.internal` to the bridge gateway with
+`extra_hosts: host.docker.internal:host-gateway`, so the Xray listener must be
+reachable from that bridge. Do not store VLESS credentials in this repository
+or `.env.example`.
+
+Before activation, verify the proxy path without calling Urban Radar, Telegram,
+or VK:
+
+```sh
+docker run --rm \
+  --add-host=host.docker.internal:host-gateway \
+  curlimages/curl:latest \
+  -sS \
+  --socks5-hostname host.docker.internal:10808 \
+  https://api.ipify.org
+```
 
 Hermes owns model/provider selection, provider authentication and MCP settings;
 Go does not read an OpenRouter key itself. Set
@@ -341,9 +375,9 @@ ZAKUPKI_CA_FILE='/run/secrets/Russian_Trusted_CA.pem'
 Otherwise leave both variables empty. The CA is a read-only mount and is never
 copied into the image or Git.
 
-### Database, migrations and first controlled run
+### VPS validation, database, migrations and first controlled run
 
-Build the image and start only PostgreSQL:
+Build the image and start the long-running production topology:
 
 ```sh
 docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml build
@@ -351,6 +385,47 @@ docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/
 docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml up -d hermes-gateway
 docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml ps
 ```
+
+Before activating cron, run these safe configuration checks as `radar`. They
+do not call Urban Radar collection, Telegram, or VK:
+
+```sh
+cd /srv/urban-radar
+
+docker compose \
+  --env-file /opt/urban-radar/.env \
+  config
+
+docker compose \
+  --env-file /opt/urban-radar/.env \
+  ps
+
+# Print only set/missing markers, never variable values or secrets.
+docker compose \
+  --env-file /opt/urban-radar/.env \
+  run --rm --no-deps --entrypoint /bin/sh urban-radar -c '
+    for name in DATABASE_URL ZAKUPKI_SEARCH_URL HERMES_HOME URBAN_RADAR_MEDIA_DIR VK_ACCESS_TOKEN VK_GROUP_ID; do
+      eval "value=\${$name:-}"
+      if [ -n "$value" ]; then printf "%s=set\\n" "$name"; else printf "%s=missing\\n" "$name"; fi
+    done
+  '
+
+docker compose \
+  --env-file /opt/urban-radar/.env \
+  exec hermes-gateway \
+  /opt/hermes-venv/bin/hermes gateway status
+
+docker compose \
+  --env-file /opt/urban-radar/.env \
+  exec hermes-gateway \
+  /opt/hermes-venv/bin/hermes plugins list --plain --no-bundled
+
+crontab -l
+sudo crontab -l
+```
+
+The production schedule belongs to the non-root `radar` user; `sudo crontab -l`
+is only a read-only check that no separate root schedule was installed.
 
 Apply migrations explicitly in filename order. They are not applied during an
 application start, and migration rollback is not automatic:
@@ -364,9 +439,12 @@ for migration in /srv/urban-radar/migrations/*.sql; do
 done
 ```
 
-Manually run the same wrapper that cron will use, then inspect its log, the
-latest persisted run and source checkpoints. Do this once before installing
-cron:
+Manually run the same production wrapper that cron will use, then inspect its
+log, the latest persisted run and source checkpoints. Do this once before
+installing cron; do not substitute a direct `docker compose run`. The wrapper
+is the production executable at `/opt/urban-radar/bin/run-news-check` and
+validates env sourcing, project path, `flock`, log path, Docker invocation, and
+child exit propagation:
 
 ```sh
 /opt/urban-radar/bin/run-news-check
@@ -384,6 +462,10 @@ it with `tail -n 200 /opt/urban-radar/logs/news-check.log`. Successful CLI
 execution exits 0. Runtime/bootstrap failures propagate non-zero status;
 item-level retryable errors may still result in a normal CLI exit when the
 persisted NewsCheck summary is `PARTIAL`.
+
+Log rotation is not implemented in this deployment contract. Monitor
+`/opt/urban-radar/logs/news-check.log` and add a host logrotate policy only as
+a separate operational change.
 
 ### Cron, backup, upgrade and rollback
 

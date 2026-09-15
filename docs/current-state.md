@@ -163,8 +163,17 @@ item is `PUBLISHED` and no VK call has occurred.
 ## Known gaps
 
 - Automatic notification after NewsCheck is not wired.
-- Production deployment of the review path has not been performed.
 - Notification delivery is not exactly-once; there is no outbox or retry worker.
+
+The production deployment contract provides a long-running `hermes-gateway`
+and a configured Telegram review plugin through the operator-owned Hermes
+home, plus the `/opt/urban-radar/bin/run-news-check` cron wrapper. Both the
+gateway and one-shot CLI depend on the host Xray/SOCKS5 endpoint at
+`host.docker.internal:10808`. Actual VPS activation remains an operator
+verification step: validate Compose interpolation, proxy reachability, gateway
+and plugin status, then run the wrapper once before enabling the documented
+`20:30 Europe/Samara` user cron entry. Repository state alone cannot confirm
+that this host cron has been installed or executed.
 
 The current callback UX/preflight change has no-network test coverage. Its
 success acknowledgement and keyboard-removal behavior have not yet been
