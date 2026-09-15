@@ -60,7 +60,9 @@ ENV PATH=/opt/hermes-venv/bin:/usr/local/bin:/usr/bin:/bin \
     TMPDIR=/tmp
 WORKDIR /app
 USER urban-radar
+RUN /opt/hermes-venv/bin/pip install --no-cache-dir "requests[socks]"
 RUN /opt/hermes-venv/bin/python --version \
  && /opt/hermes-venv/bin/python -c 'import hermes_cli; assert hermes_cli.__file__.startswith("/opt/hermes-src/")' \
+ && /opt/hermes-venv/bin/python -c 'import requests, socks' \
  && /opt/hermes-venv/bin/hermes --help >/dev/null
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/urban-radar"]
