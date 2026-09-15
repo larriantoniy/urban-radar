@@ -30,6 +30,8 @@ services:
       HOME: /home/urban-radar
       TMPDIR: /tmp
       URBAN_RADAR_MEDIA_DIR: /var/lib/urban-radar/media
+      VK_ACCESS_TOKEN: ${VK_ACCESS_TOKEN:?VK_ACCESS_TOKEN must be set}
+      VK_GROUP_ID: ${VK_GROUP_ID:?VK_GROUP_ID must be set}
     read_only: true
     restart: "no"
     security_opt:
@@ -44,6 +46,39 @@ services:
         source: ${ZAKUPKI_CA_HOST_PATH:-/dev/null}
         target: /run/secrets/Russian_Trusted_CA.pem
         read_only: true
+      - type: bind
+        source: ${URBAN_RADAR_MEDIA_HOST_DIR:?URBAN_RADAR_MEDIA_HOST_DIR must be set}
+        target: /var/lib/urban-radar/media
+
+  hermes-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
+      HERMES_HOME: /var/lib/hermes
+      HOME: /home/urban-radar
+      TMPDIR: /tmp
+      URBAN_RADAR_MEDIA_DIR: /var/lib/urban-radar/media
+      URBAN_RADAR_REVIEW_COMMAND: /usr/local/bin/urban-radar
+      URBAN_RADAR_REVIEW_COMMAND_TIMEOUT_SECONDS: ${URBAN_RADAR_REVIEW_COMMAND_TIMEOUT_SECONDS:-45}
+      VK_ACCESS_TOKEN: ${VK_ACCESS_TOKEN:?VK_ACCESS_TOKEN must be set}
+      VK_GROUP_ID: ${VK_GROUP_ID:?VK_GROUP_ID must be set}
+    read_only: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    entrypoint: ["/usr/bin/tini", "--", "/opt/hermes-venv/bin/hermes"]
+    command: ["gateway"]
+    volumes:
+      - type: bind
+        source: ${HERMES_HOME_HOST_DIR:?HERMES_HOME_HOST_DIR must be set}
+        target: /var/lib/hermes
       - type: bind
         source: ${URBAN_RADAR_MEDIA_HOST_DIR:?URBAN_RADAR_MEDIA_HOST_DIR must be set}
         target: /var/lib/urban-radar/media

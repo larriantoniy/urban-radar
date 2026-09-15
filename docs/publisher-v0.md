@@ -71,6 +71,8 @@ result. It never calls VK directly. Publisher results update the same review
 card: `FAILED` offers one explicit retry; `RECOVERY_REQUIRED` offers only
 reconciliation controls; `PUBLISHED` is idempotent. Process or malformed JSON
 errors are shown as an unknown publication outcome and never affect approval.
+The gateway imposes a bounded subprocess timeout; timeout is operator-visible,
+does not retry, and does not classify VK ambiguity.
 The retry callback addresses a persisted publication ID; Go rereads the row and
 allows a new attempt only from `FAILED`. A subsequent claimant observing
 `PUBLISHING` is blocked without altering the row because it may belong to an

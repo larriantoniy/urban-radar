@@ -26,6 +26,7 @@ _DRAFT_ID_RE = re.compile(r"^[1-9][0-9]{0,18}$")
 _ACTIONS = frozenset({"approve", "reject", "attach", "pub-found", "pub-missing", "pub-retry"})
 _MAX_PENDING_ATTACHMENTS = 128
 _PENDING_ATTACHMENT_SECONDS = 15 * 60
+_DEFAULT_REVIEW_COMMAND_TIMEOUT_SECONDS = 45.0
 _FINAL_STATUS_LINES = frozenset({
     "✅ Одобрено",
     "❌ Отклонено",
@@ -84,9 +85,16 @@ class RejectingReviewAction:
 class CLIReviewAction:
     """Narrow subprocess bridge to Urban Radar's deterministic review CLI."""
 
-    def __init__(self, command: str, runner=subprocess.run) -> None:
+    def __init__(self, command: str, runner=subprocess.run, timeout_seconds: float = _DEFAULT_REVIEW_COMMAND_TIMEOUT_SECONDS) -> None:
         self.command = command
         self.runner = runner
+        self.timeout_seconds = timeout_seconds
+
+    def _invoke(self, args: list[str], **kwargs: object) -> object:
+        try:
+            return self.runner(args, timeout=self.timeout_seconds, **kwargs)
+        except subprocess.TimeoutExpired as exc:
+            raise ReviewBridgeError("Urban Radar command timed out") from exc
 
     def approve(self, draft_id: int, actor: str) -> ReviewBridgeResult:
         return self._run("approve", draft_id, actor)
@@ -95,7 +103,7 @@ class CLIReviewAction:
         return self._run("reject", draft_id, actor)
 
     def _run(self, action: str, draft_id: int, actor: str) -> ReviewBridgeResult:
-        completed = self.runner(
+        completed = self._invoke(
             [self.command, "content", "review", action, str(draft_id), "--actor", actor],
             capture_output=True,
             check=False,
@@ -115,7 +123,7 @@ class CLIReviewAction:
         return ReviewBridgeResult(payload["result"], draft_id, expected_state)
 
     def attach(self, draft_id: int, actor: str, image: bytes) -> None:
-        completed = self.runner([self.command, "media", "attach", str(draft_id), "--actor", actor], input=image, capture_output=True, check=False)
+        completed = self._invoke([self.command, "media", "attach", str(draft_id), "--actor", actor], input=image, capture_output=True, check=False)
         if completed.returncode != 0:
             raise ReviewBridgeError("Urban Radar media command did not confirm attachment")
         try:
@@ -127,7 +135,7 @@ class CLIReviewAction:
 
     def publish(self, draft_id: int) -> dict[str, object]:
         """Invoke the deterministic Publisher only after durable approval."""
-        done = self.runner(
+        done = self._invoke(
             [self.command, "content", "publish", str(draft_id)],
             capture_output=True,
             check=False,
@@ -146,7 +154,7 @@ class CLIReviewAction:
         return value
 
     def retry(self, publication_id: int) -> dict[str, object]:
-        done = self.runner(
+        done = self._invoke(
             [self.command, "publication", "retry", str(publication_id)],
             capture_output=True,
             check=False,
@@ -167,7 +175,7 @@ class CLIReviewAction:
     def reconcile(self, publication_id: int, published: bool, post_id: str, actor: str) -> object:
         args = [self.command, "publication", "reconcile", str(publication_id), "--actor", actor]
         args += ["--published", "--external-post-id", post_id] if published else ["--not-published"]
-        done = self.runner(args, capture_output=True, check=False, text=True)
+        done = self._invoke(args, capture_output=True, check=False, text=True)
         if done.returncode:
             raise ReviewBridgeError("Urban Radar reconciliation command failed")
         try:
@@ -213,6 +221,18 @@ def preflight_review_runtime(environ: dict[str, str] | None = None) -> str:
     if not str(env.get("DATABASE_URL", "")).strip():
         raise ReviewRuntimeConfigurationError("DATABASE_URL is not set for the gateway process")
     return command
+
+
+def review_command_timeout_seconds(environ: dict[str, str] | None = None) -> float:
+    env = os.environ if environ is None else environ
+    value = str(env.get("URBAN_RADAR_REVIEW_COMMAND_TIMEOUT_SECONDS", _DEFAULT_REVIEW_COMMAND_TIMEOUT_SECONDS)).strip()
+    try:
+        timeout = float(value)
+    except ValueError as exc:
+        raise ReviewRuntimeConfigurationError("URBAN_RADAR_REVIEW_COMMAND_TIMEOUT_SECONDS must be positive") from exc
+    if timeout <= 0:
+        raise ReviewRuntimeConfigurationError("URBAN_RADAR_REVIEW_COMMAND_TIMEOUT_SECONDS must be positive")
+    return timeout
 
 
 def parse_callback_data(data: object) -> ParsedCallback | None:
@@ -573,5 +593,5 @@ def build_telegram_handler(action: ReviewAction):
 def register(ctx) -> None:
     """Pinned Hermes entry point with gateway-owned runtime preflight."""
     command = preflight_review_runtime()
-    action: ReviewAction = CLIReviewAction(command)
+    action: ReviewAction = CLIReviewAction(command, timeout_seconds=review_command_timeout_seconds())
     ctx.register_telegram_handler(build_telegram_handler(action))

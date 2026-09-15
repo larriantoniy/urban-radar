@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import subprocess
 import sys
 import types
 import unittest
@@ -111,6 +112,13 @@ class BridgeAction(ResultReviewAction):
     def retry(self, publication_id: int) -> dict[str, object]:
         self.events.append(f"retry:{publication_id}")
         return self.publication
+
+
+class TimedPublisherBridgeAction(BridgeAction):
+    def publish(self, draft_id: int) -> dict[str, object]:
+        del draft_id
+        self.events.append("publish")
+        raise contract.ReviewBridgeError("Urban Radar command timed out")
 
 
 class CallbackContractTests(unittest.TestCase):
@@ -231,6 +239,14 @@ class HermesWiringContractTests(unittest.TestCase):
             query = self.invoke_bridge(action, FakeCallbackQuery("ur:approve:19"))
         self.assertEqual(action.events, ["approve"])
         self.assertEqual(query.text_edits, [])
+
+    def test_publisher_timeout_after_approval_renders_indeterminate_without_retry(self) -> None:
+        action = TimedPublisherBridgeAction({"result": "PUBLISHED"})
+        with self.assertLogs(contract.logger, "ERROR"):
+            query = self.invoke_bridge(action, FakeCallbackQuery("ur:approve:19"))
+        self.assertEqual(action.events, ["approve", "publish"])
+        self.assertIn("✅ Одобрено\n⚠️ Не удалось определить результат публикации", query.text_edits[0]["text"])
+        self.assertIsNone(query.text_edits[0]["reply_markup"])
 
     def test_recovery_result_renders_reconciliation_controls(self) -> None:
         action = BridgeAction({"result": "RECOVERY_REQUIRED", "publication_id": 7})
@@ -506,6 +522,14 @@ class CLIReviewActionTests(unittest.TestCase):
                 with self.assertRaises(contract.ReviewBridgeError):
                     action.approve(19, "telegram:42")
 
+    def test_subprocess_timeout_is_fail_closed(self) -> None:
+        def runner(*args, **kwargs):
+            self.assertEqual(kwargs["timeout"], 12.0)
+            raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+        with self.assertRaises(contract.ReviewBridgeError):
+            contract.CLIReviewAction("urban-radar", runner, timeout_seconds=12).publish(19)
+
     def test_publish_uses_existing_cli_and_accepts_only_known_result(self) -> None:
         calls = []
 
@@ -550,6 +574,14 @@ class ReviewRuntimePreflightTests(unittest.TestCase):
             contract.preflight_review_runtime({"URBAN_RADAR_REVIEW_COMMAND": sys.executable, "DATABASE_URL": "postgres://test"}),
             sys.executable,
         )
+
+    def test_command_timeout_defaults_and_rejects_invalid_values(self) -> None:
+        self.assertEqual(contract.review_command_timeout_seconds({}), 45.0)
+        self.assertEqual(contract.review_command_timeout_seconds({"URBAN_RADAR_REVIEW_COMMAND_TIMEOUT_SECONDS": "12"}), 12.0)
+        for value in ("0", "-1", "bad"):
+            with self.subTest(value=value):
+                with self.assertRaises(contract.ReviewRuntimeConfigurationError):
+                    contract.review_command_timeout_seconds({"URBAN_RADAR_REVIEW_COMMAND_TIMEOUT_SECONDS": value})
 
 
 if __name__ == "__main__":

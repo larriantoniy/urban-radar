@@ -240,7 +240,8 @@ sudo docker version
 sudo docker compose version
 
 sudo usermod -aG docker radar
-sudo install -d -o radar -g radar /srv/urban-radar /opt/urban-radar/{bin,hermes,logs,run,secrets}
+sudo install -d -o radar -g radar /srv/urban-radar /opt/urban-radar/{bin,logs,run,secrets}
+sudo install -d -m 0750 -o 10001 -g 10001 /opt/urban-radar/{hermes,media}
 git clone <REPOSITORY_URL> /srv/urban-radar
 git -C /srv/urban-radar checkout <VALIDATED_COMMIT>
 sudo install -m 700 -o radar -g radar /srv/urban-radar/scripts/run-news-check.sh /opt/urban-radar/bin/run-news-check
@@ -258,7 +259,8 @@ deployment layout is owned by `radar`:
 /srv/urban-radar/                 # Git checkout: Dockerfile and compose.yaml
 /opt/urban-radar/.env             # owner-readable Compose values
 /opt/urban-radar/bin/run-news-check
-/opt/urban-radar/hermes/          # Hermes config, auth and state; not Git
+/opt/urban-radar/hermes/          # Hermes config, auth and state; UID/GID 10001; not Git
+/opt/urban-radar/media/           # shared media; UID/GID 10001; not Git
 /opt/urban-radar/logs/news-check.log
 /opt/urban-radar/run/news-check.lock
 /opt/urban-radar/secrets/         # optional externally obtained EIS CA
@@ -276,23 +278,29 @@ Git, the checkout, provider credentials, `.env`, certificates, or API keys.
 Edit `/opt/urban-radar/.env` from `.env.example`. Required values are
 `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, a URL-escaped
 `DATABASE_URL` whose host is `postgres` and port is `5432`,
-`ZAKUPKI_SEARCH_URL`, and `HERMES_HOME_HOST_DIR`. Do not put the database URL
+`ZAKUPKI_SEARCH_URL`, `HERMES_HOME_HOST_DIR`, `URBAN_RADAR_MEDIA_HOST_DIR`,
+`VK_ACCESS_TOKEN`, and `VK_GROUP_ID`. Do not put the database URL
 or any provider credential in cron or Compose source files.
 
 Hermes owns model/provider selection, provider authentication and MCP settings;
 Go does not read an OpenRouter key itself. Set
-`HERMES_HOME_HOST_DIR=/opt/urban-radar/hermes`, keep that directory mode 700
-and owned by `radar`, and configure its `config.yaml` with the
+`HERMES_HOME_HOST_DIR=/opt/urban-radar/hermes` and configure its `config.yaml` with the
 container-path MCP commands in
 [`hermes/mcp-container.example.yaml`](../hermes/mcp-container.example.yaml).
 Hermes credentials remain inside that operator-owned directory and are mounted
-only into the application container as `HERMES_HOME=/var/lib/hermes`.
+into the application and gateway containers as `HERMES_HOME=/var/lib/hermes`.
+Because containers run as UID/GID `10001`, both bind-mounted Hermes home and
+media directory must be owned by `10001:10001` and mode `0750`; do not use
+world-writable permissions. Install the review plugin into
+`/opt/urban-radar/hermes/plugins/urban-radar-telegram-review-experiment/` from
+the validated checkout and retain the same ownership.
 
-### Telegram review callback deployment invariant
+### Telegram review gateway
 
-The current Compose topology has no long-running Hermes gateway service: it
-contains only PostgreSQL and the one-shot `urban-radar` runtime. Telegram
-review deployment is therefore not enabled by this document or by Compose.
+Compose runs `hermes-gateway` as the long-running Telegram transport alongside
+PostgreSQL. The one-shot `urban-radar` service remains the manual/cron runtime.
+Both mount the same host media directory at `/var/lib/urban-radar/media` and
+receive the same `DATABASE_URL`, `VK_ACCESS_TOKEN`, and `VK_GROUP_ID`.
 
 When a gateway is deliberately deployed, its own process environment must
 contain both of these values before plugin discovery:
@@ -305,10 +313,10 @@ DATABASE_URL=<PostgreSQL URL reachable from that gateway process>
 The review plugin validates both at registration. A missing value, a relative
 path, or a non-executable command prevents the plugin from registering; it
 never falls back to an interactive shell or a guessed `urban-radar` command.
-Values must be provided by the gateway supervisor: launchd `EnvironmentVariables`
-for the local macOS gateway, or a future Compose gateway service `environment`
-block sourced from the operator-owned `/opt/urban-radar/.env`. They must not
-be added to Git, a plugin manifest, or the image.
+Values are provided by the Compose `environment` block sourced from the
+operator-owned `/opt/urban-radar/.env`. They must not be added to Git, a plugin
+manifest, or the image. `URBAN_RADAR_REVIEW_COMMAND_TIMEOUT_SECONDS` defaults
+to 45 seconds; expiry is fail-closed and never retries a command.
 
 The local macOS gateway currently demonstrates the launchd variant with an
 absolute operator-owned Urban Radar binary path. Hermes loads its managed home
@@ -316,12 +324,11 @@ before plugin discovery; the plugin registration preflight then verifies the
 effective process environment without logging any value. This is a
 configuration check only and does not contact Telegram, PostgreSQL, or VK.
 
-For the future container topology, the stable command is
+For this container topology, the stable command is
 `/usr/local/bin/urban-radar`, because that is the path baked into the existing
-Urban Radar image. The future gateway service must receive `DATABASE_URL` from
-the same operator-owned Compose environment and mount the configured Hermes
-home containing the review plugin. Adding that service is a separate
-deployment milestone; no systemd unit or second scheduler exists today.
+Urban Radar image. The gateway receives `DATABASE_URL` from the same
+operator-owned Compose environment and mounts the configured Hermes home
+containing the review plugin. No systemd unit or second scheduler is added.
 
 If EIS requires an external CA, place it at
 `/opt/urban-radar/secrets/Russian_Trusted_CA.pem`, mode 600, and set:
@@ -341,6 +348,7 @@ Build the image and start only PostgreSQL:
 ```sh
 docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml build
 docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml up -d postgres
+docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml up -d hermes-gateway
 docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml ps
 ```
 

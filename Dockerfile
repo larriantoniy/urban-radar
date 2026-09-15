@@ -9,6 +9,7 @@ RUN go mod download
 COPY cmd ./cmd
 COPY content ./content
 COPY newscheck ./newscheck
+COPY publisher ./publisher
 COPY runtime ./runtime
 COPY source ./source
 COPY storage ./storage

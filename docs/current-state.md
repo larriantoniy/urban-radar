@@ -172,7 +172,8 @@ separately observed on a new live callback.
 
 The gateway registration preflight requires a gateway-owned absolute
 `URBAN_RADAR_REVIEW_COMMAND` and `DATABASE_URL`; it never relies on an
-interactive shell. Current Compose has no long-running gateway service.
+interactive shell. Compose runs the long-lived Hermes gateway with the same
+PostgreSQL, VK configuration, and media bind mount as the CLI.
 
 ## Do not revisit without new evidence
 
