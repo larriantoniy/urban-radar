@@ -60,7 +60,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      ALL_PROXY: socks5h://host.docker.internal:10808
+      ALL_PROXY: socks5://host.docker.internal:10808
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
       HERMES_HOME: /var/lib/hermes
       HOME: /home/urban-radar
