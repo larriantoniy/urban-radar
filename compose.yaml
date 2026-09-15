@@ -22,7 +22,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
+      ALL_PROXY: socks5://host.docker.internal:10808
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
       ZAKUPKI_SEARCH_URL: ${ZAKUPKI_SEARCH_URL:?ZAKUPKI_SEARCH_URL must be set}
       ZAKUPKI_CA_FILE: ${ZAKUPKI_CA_FILE:-}
