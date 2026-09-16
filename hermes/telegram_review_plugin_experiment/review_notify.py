@@ -1,4 +1,5 @@
 #!/opt/hermes-venv/bin/python
+
 """Plugin-owned one-shot Telegram review notification sender.
 
 This deliberately uses pinned Hermes configuration and python-telegram-bot,

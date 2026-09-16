@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import stat
 import sys
 import types
 import unittest
@@ -78,6 +79,10 @@ class NotificationSenderTests(unittest.TestCase):
                 "reject_callback_data": f"ur:reject:{draft_id}",
             }
         )
+
+    def test_sender_has_runtime_shebang_and_executable_mode(self) -> None:
+        self.assertEqual(MODULE_PATH.read_text(encoding="utf-8").splitlines()[0], "#!/opt/hermes-venv/bin/python")
+        self.assertTrue(MODULE_PATH.stat().st_mode & stat.S_IXUSR)
 
     def config(self):
         home = types.SimpleNamespace(chat_id="1001", thread_id=None)

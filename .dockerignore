@@ -1,12 +1,5 @@
 .git
-# The production image owns this versioned project-local skill. Other Hermes
-# home/config assets remain excluded and are supplied through HERMES_HOME.
-.hermes/*
-!.hermes/skills/
-.hermes/skills/*
-!.hermes/skills/urban-radar-editorial-style-v1/
-.hermes/skills/urban-radar-editorial-style-v1/*
-!.hermes/skills/urban-radar-editorial-style-v1/SKILL.md
+.hermes
 .codex
 .agents
 .env

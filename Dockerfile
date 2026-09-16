@@ -53,7 +53,6 @@ COPY agents/discovery/prompt-runtime-v0.md /app/agents/discovery/prompt-runtime-
 COPY agents/editor/prompt-v1.md /app/agents/editor/prompt-v1.md
 COPY agents/research/prompt-v0.2.md /app/agents/research/prompt-v0.2.md
 COPY agents/content/prompt-v1.md /app/agents/content/prompt-v1.md
-COPY .hermes/skills/urban-radar-editorial-style-v1/SKILL.md /app/.hermes/skills/urban-radar-editorial-style-v1/SKILL.md
 
 ENV PATH=/opt/hermes-venv/bin:/usr/local/bin:/usr/bin:/bin \
     HOME=/home/urban-radar \
@@ -65,6 +64,5 @@ USER urban-radar
 RUN /opt/hermes-venv/bin/python --version \
  && /opt/hermes-venv/bin/python -c 'import hermes_cli; assert hermes_cli.__file__.startswith("/opt/hermes-src/")' \
  && /opt/hermes-venv/bin/python -c 'import requests, socks' \
- && test -r /app/.hermes/skills/urban-radar-editorial-style-v1/SKILL.md \
  && /opt/hermes-venv/bin/hermes --help >/dev/null
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/urban-radar"]

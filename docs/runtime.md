@@ -236,19 +236,32 @@ That container therefore receives the same `TELEGRAM_BOT_TOKEN` and
 only and continues to use `TELEGRAM_ALLOWED_USERS`. The sender file in the
 operator-owned Hermes home must be executable.
 
-The versioned Content style skill is deliberately image-owned, not part of the
-operator-owned `HERMES_HOME`: a rebuilt image contains
-`/app/.hermes/skills/urban-radar-editorial-style-v1/SKILL.md`, which Hermes
-finds from its `/app` project root. Verify this after every image rebuild:
+Project-local `.hermes/skills` under `/app` is not a production Hermes runtime
+source: the image is not a Git checkout and Hermes does not discover that path
+as a project repository. Git remains the source of truth, but the persistent
+Hermes profile is the runtime location:
+
+```text
+/srv/urban-radar/
+  .hermes/skills/urban-radar-editorial-style-v1/
+  hermes/telegram_review_plugin_experiment/
+      ↓ deploy sync
+/opt/urban-radar/hermes/
+  skills/urban-radar-editorial-style-v1/
+  plugins/urban-radar-telegram-review-experiment/
+      ↓ Docker bind mount
+/var/lib/hermes/
+```
+
+Run the root-only deploy operation after every Git update, never from cron:
 
 ```sh
-docker compose \
-  --env-file /opt/urban-radar/.env \
-  run --rm \
-  --entrypoint sh \
-  urban-radar \
-  -lc 'test -f /app/.hermes/skills/urban-radar-editorial-style-v1/SKILL.md && echo OK'
+sudo /srv/urban-radar/scripts/deploy-hermes-assets.sh
 ```
+
+It atomically replaces only the managed Urban Radar skill/plugin directories,
+removes stale files within those directories, sets ownership to `10001:10001`,
+and preserves all other Hermes configuration, skills and plugins.
 
 ### Install Docker and deploy
 
@@ -355,9 +368,9 @@ Hermes credentials remain inside that operator-owned directory and are mounted
 into the application and gateway containers as `HERMES_HOME=/var/lib/hermes`.
 Because containers run as UID/GID `10001`, both bind-mounted Hermes home and
 media directory must be owned by `10001:10001` and mode `0750`; do not use
-world-writable permissions. Install the review plugin into
-`/opt/urban-radar/hermes/plugins/urban-radar-telegram-review-experiment/` from
-the validated checkout and retain the same ownership.
+world-writable permissions. Do not copy the review plugin or Content skill by
+hand: `deploy-hermes-assets.sh` installs their managed runtime copies from the
+validated checkout with the required ownership and modes.
 
 ### Telegram review gateway
 
@@ -410,9 +423,12 @@ copied into the image or Git.
 Build the image and start the long-running production topology:
 
 ```sh
+cd /srv/urban-radar
+git pull --ff-only
+sudo /srv/urban-radar/scripts/deploy-hermes-assets.sh
 docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml build
 docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml up -d postgres
-docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml up -d hermes-gateway
+docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml up -d --force-recreate hermes-gateway
 docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml ps
 ```
 
@@ -421,6 +437,24 @@ do not call Urban Radar collection, Telegram, or VK:
 
 ```sh
 cd /srv/urban-radar
+
+test -f /opt/urban-radar/hermes/skills/urban-radar-editorial-style-v1/SKILL.md
+test -x /opt/urban-radar/hermes/plugins/urban-radar-telegram-review-experiment/review_notify.py
+
+docker compose \
+  --env-file /opt/urban-radar/.env \
+  run --rm \
+  --entrypoint sh \
+  urban-radar \
+  -lc '
+    test -f /var/lib/hermes/skills/urban-radar-editorial-style-v1/SKILL.md &&
+    echo "SKILL OK"
+
+    head -n 1 /var/lib/hermes/plugins/urban-radar-telegram-review-experiment/review_notify.py
+
+    test -x /var/lib/hermes/plugins/urban-radar-telegram-review-experiment/review_notify.py &&
+    echo "SENDER EXECUTABLE"
+  '
 
 docker compose \
   --env-file /opt/urban-radar/.env \
