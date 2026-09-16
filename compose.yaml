@@ -36,6 +36,8 @@ services:
       TMPDIR: /tmp
       URBAN_RADAR_MEDIA_DIR: /var/lib/urban-radar/media
       URBAN_RADAR_REVIEW_NOTIFY_COMMAND: /var/lib/hermes/plugins/urban-radar-telegram-review-experiment/review_notify.py
+      URBAN_RADAR_REVIEW_COMMAND: /usr/local/bin/urban-radar
+      URBAN_RADAR_REVIEW_COMMAND_TIMEOUT_SECONDS: ${URBAN_RADAR_REVIEW_COMMAND_TIMEOUT_SECONDS:-45}
       VK_ACCESS_TOKEN: ${VK_ACCESS_TOKEN:?VK_ACCESS_TOKEN must be set}
       VK_GROUP_ID: ${VK_GROUP_ID:?VK_GROUP_ID must be set}
     read_only: true

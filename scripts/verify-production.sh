@@ -100,7 +100,10 @@ main() {
   "${compose[@]}" run --rm --no-deps --entrypoint sh urban-radar -lc '
     test -f /var/lib/hermes/skills/urban-radar-editorial-style-v1/SKILL.md &&
     test -x /var/lib/hermes/plugins/urban-radar-telegram-review-experiment/review_notify.py &&
-    test "$(head -n 1 /var/lib/hermes/plugins/urban-radar-telegram-review-experiment/review_notify.py)" = "#!/opt/hermes-venv/bin/python"
+    test "$(head -n 1 /var/lib/hermes/plugins/urban-radar-telegram-review-experiment/review_notify.py)" = "#!/opt/hermes-venv/bin/python" &&
+    if test -n "${URBAN_RADAR_REVIEW_COMMAND:-}"; then echo "review command: set"; else echo "review command: missing" >&2; exit 1; fi &&
+    if test -n "${URBAN_RADAR_REVIEW_COMMAND_TIMEOUT_SECONDS:-}"; then echo "review command timeout: set"; else echo "review command timeout: missing" >&2; exit 1; fi &&
+    /opt/hermes-venv/bin/python -c "from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup; print(\"telegram runtime: OK\")"
   '
   "${compose[@]}" exec hermes-gateway /opt/hermes-venv/bin/hermes gateway status
   printf 'production verification: OK\n'

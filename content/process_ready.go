@@ -54,9 +54,11 @@ func (p ReadyProcessor) Process(ctx context.Context) (ProcessReadySummary, error
 			summary.Errors = append(summary.Errors, processReadyError(event, "generation", err))
 			continue
 		}
-		summary.Usage.Add(draft.Usage)
 		if created {
 			summary.DraftsCreated++
+			// Usage is scoped to this invocation. A reused draft's persisted usage
+			// describes its historical generation and must not look like a new LLM call.
+			summary.Usage.Add(draft.Usage)
 		} else {
 			summary.DraftsReused++
 		}

@@ -34,7 +34,7 @@ RUN apt-get update \
  && git -C /opt/hermes-src checkout -q --detach FETCH_HEAD \
  && test "$(git -C /opt/hermes-src rev-parse HEAD)" = "${HERMES_REF}" \
  && cd /opt/hermes-src \
- && UV_PYTHON=/opt/hermes-venv/bin/python UV_PROJECT_ENVIRONMENT=/opt/hermes-venv /opt/hermes-venv/bin/uv sync --locked \
+ && UV_PYTHON=/opt/hermes-venv/bin/python UV_PROJECT_ENVIRONMENT=/opt/hermes-venv /opt/hermes-venv/bin/uv sync --locked --extra messaging \
  && /opt/hermes-venv/bin/hermes --help >/dev/null
 
 FROM python:3.12-slim-bookworm AS runtime
@@ -64,5 +64,6 @@ USER urban-radar
 RUN /opt/hermes-venv/bin/python --version \
  && /opt/hermes-venv/bin/python -c 'import hermes_cli; assert hermes_cli.__file__.startswith("/opt/hermes-src/")' \
  && /opt/hermes-venv/bin/python -c 'import requests, socks' \
+ && /opt/hermes-venv/bin/python -c 'from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup' \
  && /opt/hermes-venv/bin/hermes --help >/dev/null
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/urban-radar"]

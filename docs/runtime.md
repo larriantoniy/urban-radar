@@ -232,9 +232,16 @@ flow.
 the existing plugin-owned sender at
 `/var/lib/hermes/plugins/urban-radar-telegram-review-experiment/review_notify.py`.
 That container therefore receives the same `TELEGRAM_BOT_TOKEN` and
-`TELEGRAM_HOME_CHANNEL` as the gateway; callback authorization remains gateway-
-only and continues to use `TELEGRAM_ALLOWED_USERS`. The sender file in the
-operator-owned Hermes home must be executable.
+`TELEGRAM_HOME_CHANNEL` as the gateway, plus the same absolute
+`URBAN_RADAR_REVIEW_COMMAND=/usr/local/bin/urban-radar` and bounded
+`URBAN_RADAR_REVIEW_COMMAND_TIMEOUT_SECONDS` plugin-loader contract. Callback
+authorization remains gateway-only and continues to use `TELEGRAM_ALLOWED_USERS`.
+The sender file in the operator-owned Hermes home must be executable.
+
+The image installs the pinned Hermes `messaging` extra through its locked
+dependency graph. This provides the pinned `python-telegram-bot` dependency for
+both the long-running gateway and the one-shot notification sender; it is not
+installed at container startup.
 
 Project-local `.hermes/skills` under `/app` is not a production Hermes runtime
 source: the image is not a Git checkout and Hermes does not discover that path
@@ -473,6 +480,12 @@ docker compose \
 
     test -x /var/lib/hermes/plugins/urban-radar-telegram-review-experiment/review_notify.py &&
     echo "SENDER EXECUTABLE"
+
+    test -n "${URBAN_RADAR_REVIEW_COMMAND:-}" &&
+    echo "REVIEW COMMAND SET"
+
+    /opt/hermes-venv/bin/python -c \
+      "from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup; print('telegram runtime: OK')"
   '
 
 docker compose \

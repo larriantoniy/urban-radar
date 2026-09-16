@@ -105,11 +105,11 @@ func TestProcessReadyCreatesReusesAndNotifiesIdempotently(t *testing.T) {
 	agent := &readyProcessAgent{}
 	notifier := &readyProcessNotifier{store: store, fail: map[int64]error{}}
 	summary, err := readyProcessor(store, agent, notifier).Process(context.Background())
-	if err != nil || summary.DraftsCreated != 1 || summary.NotificationsSent != 1 || len(agent.calls) != 1 {
+	if err != nil || summary.DraftsCreated != 1 || summary.NotificationsSent != 1 || summary.Usage.APICalls != 1 || len(agent.calls) != 1 {
 		t.Fatalf("summary=%+v calls=%v err=%v", summary, agent.calls, err)
 	}
 	summary, err = readyProcessor(store, agent, notifier).Process(context.Background())
-	if err != nil || summary.DraftsReused != 1 || summary.NotificationsSkipped != 1 || len(agent.calls) != 1 {
+	if err != nil || summary.DraftsReused != 1 || summary.NotificationsSkipped != 1 || summary.Usage.APICalls != 0 || len(agent.calls) != 1 {
 		t.Fatalf("replay=%+v calls=%v err=%v", summary, agent.calls, err)
 	}
 }

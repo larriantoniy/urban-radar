@@ -27,6 +27,9 @@ The cron wrapper runs `content process-ready` after a successful `news check`.
 It selects persisted `READY_TO_PUBLISH` records in stable source order,
 reuses an exact draft when possible, and sends a review card only for an
 undelivered `PENDING` draft. It never publishes to VK.
+The `usage` field in a `content process-ready` summary reports Content Agent
+usage incurred by that invocation only; persisted historical usage from reused
+drafts is not counted as a new API call.
 
 ## Validated milestones
 
