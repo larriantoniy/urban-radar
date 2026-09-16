@@ -34,6 +34,18 @@ type vkErr struct {
 	ErrorCode int    `json:"error_code"`
 	ErrorMsg  string `json:"error_msg"`
 }
+
+// VKAPIError is a definitive response from VK: the requested method was
+// rejected and no caller should treat it as a transport ambiguity. Error()
+// intentionally exposes only the stable numeric code, never response bodies
+// or credentials.
+type VKAPIError struct {
+	Code    int
+	Message string
+}
+
+func (e *VKAPIError) Error() string { return fmt.Sprintf("VK_API_ERROR_%d", e.Code) }
+
 type vkResp struct {
 	Response json.RawMessage `json:"response"`
 	Error    *vkErr          `json:"error"`
@@ -67,9 +79,18 @@ func (c VKClient) api(ctx context.Context, method string, v url.Values, out any,
 		return fmt.Errorf("VK_INVALID_RESPONSE")
 	}
 	if x.Error != nil {
-		return fmt.Errorf("VK_API_ERROR_%d", x.Error.ErrorCode)
+		if x.Error.ErrorCode <= 0 {
+			return fmt.Errorf("VK_INVALID_RESPONSE")
+		}
+		return &VKAPIError{Code: x.Error.ErrorCode, Message: x.Error.ErrorMsg}
 	}
-	return json.Unmarshal(x.Response, out)
+	if len(x.Response) == 0 || bytes.Equal(x.Response, []byte("null")) {
+		return fmt.Errorf("VK_INVALID_RESPONSE")
+	}
+	if e = json.Unmarshal(x.Response, out); e != nil {
+		return fmt.Errorf("VK_INVALID_RESPONSE")
+	}
+	return nil
 }
 
 type ambiguous struct{ error }
@@ -123,10 +144,17 @@ func (c VKClient) Publish(ctx context.Context, text string, m *content.PublishMe
 			attach += "_" + saved[0].AccessKey
 		}
 	}
-	var id int64
-	e := c.api(ctx, "wall.post", url.Values{"owner_id": {"-" + strconv.FormatInt(c.GroupID, 10)}, "from_group": {"1"}, "message": {text}, "attachments": {attach}}, &id, true)
+	// VK API v5.199 returns {"response":{"post_id":<positive integer>}}
+	// for wall.post. It is not a bare integer like some older examples imply.
+	var response struct {
+		PostID int64 `json:"post_id"`
+	}
+	e := c.api(ctx, "wall.post", url.Values{"owner_id": {"-" + strconv.FormatInt(c.GroupID, 10)}, "from_group": {"1"}, "message": {text}, "attachments": {attach}}, &response, true)
 	if e != nil {
 		return "", e
 	}
-	return strconv.FormatInt(id, 10), nil
+	if response.PostID <= 0 {
+		return "", fmt.Errorf("VK_INVALID_RESPONSE")
+	}
+	return strconv.FormatInt(response.PostID, 10), nil
 }
