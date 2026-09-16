@@ -53,6 +53,14 @@ class _CallbackQueryHandler(_Handler):
     pass
 
 
+class _MessageHandler(_Handler):
+    pass
+
+
+class _MessageFilter:
+    pass
+
+
 class _InlineKeyboardButton:
     def __init__(self, text, callback_data) -> None:
         self.text = text
@@ -97,6 +105,12 @@ def _install_ptb_wiring_fakes() -> None:
     telegram.InlineKeyboardMarkup = _InlineKeyboardMarkup
     telegram_ext = types.ModuleType("telegram.ext")
     telegram_ext.CallbackQueryHandler = _CallbackQueryHandler
+    telegram_ext.MessageHandler = _MessageHandler
+    telegram_ext.filters = types.SimpleNamespace(
+        MessageFilter=_MessageFilter,
+        TEXT=_Filter(),
+        REPLY=_Filter(),
+    )
     sys.modules["telegram"] = telegram
     sys.modules["telegram.ext"] = telegram_ext
 
@@ -216,6 +230,27 @@ class HermesReviewPluginLoaderIntegrationTests(unittest.TestCase):
         self.assertIsNotNone(urban_pattern.match("ur:approve:19"))
         self.assertIsNone(urban_pattern.match("ea:once:17"))
         self.assertIsNone(urban_pattern.match("sc:once:confirm"))
+
+        # The attach handler is registered by the plugin before the core media
+        # catch-all. Its filter is state-aware, so it can win exactly one
+        # pending attachment without swallowing ordinary photos.
+        plugin_message_handlers = [
+            handler
+            for handler in application.handlers[0]
+            if isinstance(handler, _MessageHandler)
+        ]
+        self.assertEqual(len(plugin_message_handlers), 2)
+        self.assertTrue(callable(getattr(plugin_message_handlers[0].args[0], "filter", None)))
+        core_handler = next(
+            handler
+            for handler in application.handlers[0]
+            if isinstance(handler, _Handler)
+            and not isinstance(handler, (_CallbackQueryHandler, _MessageHandler))
+        )
+        self.assertLess(
+            application.handlers[0].index(plugin_message_handlers[0]),
+            application.handlers[0].index(core_handler),
+        )
 
     def test_loaded_plugin_owned_sender_forms_pinned_ptb_inline_keyboard_call(self) -> None:
         self.plugins.discover_plugins(force=True)

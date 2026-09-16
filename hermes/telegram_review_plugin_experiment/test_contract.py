@@ -24,12 +24,16 @@ SPEC.loader.exec_module(contract)
 class FakeReviewAction:
     def __init__(self) -> None:
         self.calls: list[tuple[str, int, str]] = []
+        self.attachments: list[tuple[int, str, bytes]] = []
 
     def approve(self, draft_id: int, actor: str) -> None:
         self.calls.append(("approve", draft_id, actor))
 
     def reject(self, draft_id: int, actor: str) -> None:
         self.calls.append(("reject", draft_id, actor))
+
+    def attach(self, draft_id: int, actor: str, image: bytes) -> None:
+        self.attachments.append((draft_id, actor, image))
 
     def publish(self, draft_id: int) -> dict[str, object]:
         del draft_id
@@ -323,6 +327,128 @@ class HermesWiringContractTests(unittest.TestCase):
         self.assertEqual(len(captured), 1)
         self.assertEqual(captured[0].pattern, r"^ur:")
         self.assertEqual(action.calls, [("approve", 19, "telegram:42")])
+
+    def test_attach_callback_intercepts_only_the_pending_users_next_photo(self) -> None:
+        """A pending attachment bypasses general media/agent dispatch once."""
+        captured = []
+        action = FakeReviewAction()
+        adapter = FakeAdapter(True)
+
+        class CallbackQueryHandler:
+            def __init__(self, callback_fn, pattern: str) -> None:
+                self.callback_fn = callback_fn
+                self.pattern = pattern
+
+        class MessageHandler:
+            def __init__(self, message_filter, callback_fn) -> None:
+                self.message_filter = message_filter
+                self.callback_fn = callback_fn
+
+        class MessageFilter:
+            pass
+
+        class Filter:
+            def __and__(self, other):
+                return self
+
+        telegram = types.ModuleType("telegram")
+        telegram_ext = types.ModuleType("telegram.ext")
+        telegram_ext.CallbackQueryHandler = CallbackQueryHandler
+        telegram_ext.MessageHandler = MessageHandler
+        telegram_ext.filters = types.SimpleNamespace(MessageFilter=MessageFilter, TEXT=Filter(), REPLY=Filter())
+        old_telegram, old_telegram_ext = sys.modules.get("telegram"), sys.modules.get("telegram.ext")
+        sys.modules["telegram"], sys.modules["telegram.ext"] = telegram, telegram_ext
+        try:
+            contract.build_telegram_handler(action)(types.SimpleNamespace(add_handler=captured.append), adapter)
+            callback_handler = captured[0]
+            photo_handler = captured[1]
+
+            query = FakeCallbackQuery("ur:attach:19")
+            query.message.message_id = 501
+            query.message.reply_markup = object()
+            card_edits: list[dict[str, object]] = []
+
+            async def edit_card(**kwargs) -> None:
+                card_edits.append(kwargs)
+
+            query.message.edit_text = edit_card
+            asyncio.run(callback_handler.callback_fn(types.SimpleNamespace(callback_query=query), object()))
+            self.assertEqual(query.answers, [{"text": "Отправьте одно фото.", "show_alert": False}])
+
+            class TelegramFile:
+                async def download_as_bytearray(self):
+                    return bytearray(b"jpeg-bytes")
+
+            class Photo:
+                async def get_file(self):
+                    return TelegramFile()
+
+            confirmations: list[str] = []
+
+            async def reply_text(text: str) -> None:
+                confirmations.append(text)
+
+            photo_message = types.SimpleNamespace(
+                chat_id=1001,
+                chat=types.SimpleNamespace(type="private"),
+                message_thread_id=None,
+                from_user=types.SimpleNamespace(id=42, first_name="Radar"),
+                photo=[Photo()],
+                reply_text=reply_text,
+            )
+
+            # Simulate Hermes' group-0 first-match dispatch: the plugin's
+            # state-aware filter wins for this one pending upload, so the
+            # normal Hermes media/agent callback is never selected.
+            agent_dispatches: list[object] = []
+            core_handler = types.SimpleNamespace(
+                message_filter=types.SimpleNamespace(filter=lambda message: True),
+                callback_fn=lambda update, context: agent_dispatches.append(update),
+            )
+            for registered in (photo_handler, core_handler):
+                if registered.message_filter.filter(photo_message):
+                    result = registered.callback_fn(types.SimpleNamespace(effective_message=photo_message), object())
+                    if result is not None:
+                        asyncio.run(result)
+                    break
+
+            self.assertEqual(action.attachments, [(19, "telegram:42", b"jpeg-bytes")])
+            self.assertEqual(agent_dispatches, [])
+            self.assertEqual(confirmations, ["📷 Фото прикреплено."])
+            self.assertEqual(card_edits[0]["text"], query.message.text + "\n\n📷 Фото прикреплено")
+
+            # With no pending intent the plugin filter does not match. The
+            # same core handler is selected, preserving ordinary Hermes media
+            # behavior (including its own agent/vision policy).
+            ordinary_photo = types.SimpleNamespace(
+                chat_id=1001,
+                chat=types.SimpleNamespace(type="private"),
+                message_thread_id=None,
+                from_user=types.SimpleNamespace(id=42, first_name="Radar"),
+                photo=[Photo()],
+            )
+            for registered in (photo_handler, core_handler):
+                if registered.message_filter.filter(ordinary_photo):
+                    result = registered.callback_fn(types.SimpleNamespace(effective_message=ordinary_photo), object())
+                    if result is not None:
+                        asyncio.run(result)
+                    break
+            self.assertEqual(len(agent_dispatches), 1)
+        finally:
+            if old_telegram is None:
+                del sys.modules["telegram"]
+            else:
+                sys.modules["telegram"] = old_telegram
+            if old_telegram_ext is None:
+                del sys.modules["telegram.ext"]
+            else:
+                sys.modules["telegram.ext"] = old_telegram_ext
+
+    def test_plugin_never_owns_a_telegram_polling_loop(self) -> None:
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        for forbidden in ("run_polling", "start_polling", "get_updates", "Application(", "Updater("):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, source)
 
     def test_applied_callback_acknowledges_and_removes_keyboard(self) -> None:
         captured = []

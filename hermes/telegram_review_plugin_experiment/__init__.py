@@ -70,6 +70,19 @@ class ReviewBridgeResult:
     review_state: str
 
 
+@dataclass(frozen=True)
+class PendingAttachment:
+    """Transient, context-bound intent to attach one Telegram photo.
+
+    PostgreSQL remains the authority for the draft and media lifecycle.  This
+    only prevents an arbitrary later photo from being treated as an attachment.
+    """
+
+    draft_id: int
+    expires_at: float
+    review_message: object
+
+
 class RejectingReviewAction:
     """Safe default for an unconfigured experimental plugin."""
 
@@ -439,31 +452,70 @@ async def _render_publication_result(query: object, draft_id: int, result: dict[
 def build_telegram_handler(action: ReviewAction):
     """Return a pinned-Hermes PTB handler factory for the ``ur:`` namespace."""
 
-    pending: dict[tuple[str, object, object, object], tuple[int, float]] = {}
+    # Attachment intent deliberately has no LLM or database state. It is
+    # bounded to the authorized Telegram user and conversation context, and
+    # expires. The deterministic CLI validates the persisted draft state.
+    pending: dict[tuple[str, object, object], PendingAttachment] = {}
     pending_reconciliation: dict[tuple[str, object, object, object], tuple[int, float]] = {}
 
+    def attachment_key(message: object, user_id: str) -> tuple[str, object, object]:
+        return (
+            user_id,
+            getattr(message, "chat_id", None),
+            getattr(message, "message_thread_id", None),
+        )
+
     def authorized(query: object) -> tuple[str, tuple[str, object, object, object]] | None:
-        user_id = _callback_user_id(query); message=getattr(query,"message",None); chat=getattr(message,"chat",None)
-        if user_id is None: return None
-        key=(user_id,getattr(message,"chat_id",None),getattr(message,"message_thread_id",None),getattr(message,"message_id",None))
-        checker=getattr(adapter,"_is_callback_user_authorized",None)
-        if not callable(checker) or not checker(user_id,chat_id=key[1],chat_type=getattr(chat,"type",None),thread_id=key[2],user_name=getattr(getattr(query,"from_user",None),"first_name",None)): return None
-        return user_id,key
+        user_id = _callback_user_id(query)
+        message = getattr(query, "message", None)
+        chat = getattr(message, "chat", None)
+        if user_id is None:
+            return None
+        key = (
+            user_id,
+            getattr(message, "chat_id", None),
+            getattr(message, "message_thread_id", None),
+            getattr(message, "message_id", None),
+        )
+        checker = getattr(adapter, "_is_callback_user_authorized", None)
+        if not callable(checker) or not checker(
+            user_id,
+            chat_id=key[1],
+            chat_type=getattr(chat, "type", None),
+            thread_id=key[2],
+            user_name=getattr(getattr(query, "from_user", None), "first_name", None),
+        ):
+            return None
+        return user_id, key
+
+    def prune_expired_attachments(now: float) -> None:
+        for key, entry in list(pending.items()):
+            if entry.expires_at <= now:
+                pending.pop(key, None)
 
     async def on_callback(update, context) -> None:
         del context
         query = getattr(update, "callback_query", None)
         parsed = parse_callback_data(getattr(query, "data", None))
         if parsed and parsed.action == "attach":
-            identity=authorized(query)
-            if identity is None: await _answer_callback(query,"Действие недоступно.",show_alert=True); return
+            identity = authorized(query)
+            if identity is None:
+                await _answer_callback(query, "Действие недоступно.", show_alert=True)
+                return
             now = time.monotonic()
-            for key, (_, deadline) in list(pending.items()):
-                if deadline <= now: pending.pop(key, None)
-            if len(pending) >= _MAX_PENDING_ATTACHMENTS and identity[1] not in pending:
-                await _answer_callback(query,"Слишком много ожидающих загрузок. Повторите позже.",show_alert=True); return
-            pending[identity[1]]=(parsed.draft_id, now + _PENDING_ATTACHMENT_SECONDS)
-            await _answer_callback(query,"Отправьте одно фото ответом на эту карточку.",show_alert=False)
+            prune_expired_attachments(now)
+            key = attachment_key(getattr(query, "message", None), identity[0])
+            if len(pending) >= _MAX_PENDING_ATTACHMENTS and key not in pending:
+                await _answer_callback(query, "Слишком много ожидающих загрузок. Повторите позже.", show_alert=True)
+                return
+            # A newer attach click in the same authorized conversation replaces
+            # only that user's previous intent.
+            pending[key] = PendingAttachment(
+                draft_id=parsed.draft_id,
+                expires_at=now + _PENDING_ATTACHMENT_SECONDS,
+                review_message=getattr(query, "message", None),
+            )
+            await _answer_callback(query, "Отправьте одно фото.", show_alert=False)
             return
         if parsed and parsed.action in {"pub-found", "pub-missing", "pub-retry"}:
             identity = authorized(query)
@@ -540,29 +592,102 @@ def build_telegram_handler(action: ReviewAction):
             # only CallbackQueryHandler.
             return
 
+        class PendingAttachmentPhotoFilter(filters.MessageFilter):
+            """Match only a photo that has a live attachment intent.
+
+            Hermes wires plugin handlers before its general media handler and
+            PTB dispatches one matching handler per group. A broad PHOTO
+            handler would therefore swallow ordinary photos. Keeping the
+            pending-state check in the filter makes non-attachment photos fall
+            through unchanged to Hermes' normal agent dispatch.
+            """
+
+            def filter(self, message) -> bool:
+                photos = getattr(message, "photo", None)
+                sender = getattr(message, "from_user", None)
+                raw_user_id = getattr(sender, "id", None)
+                if not photos or isinstance(raw_user_id, bool) or raw_user_id is None:
+                    return False
+                user_id = str(raw_user_id).strip()
+                if not user_id:
+                    return False
+                key = attachment_key(message, user_id)
+                entry = pending.get(key)
+                if entry is None:
+                    return False
+                if entry.expires_at <= time.monotonic():
+                    pending.pop(key, None)
+                    return False
+                return True
+
         async def on_photo(update, context) -> None:
             del context
-            message=getattr(update,"effective_message",None); reply=getattr(message,"reply_to_message",None); sender=getattr(message,"from_user",None)
-            user_id=str(getattr(sender,"id","")).strip(); key=(user_id,getattr(reply,"chat_id",None),getattr(reply,"message_thread_id",None),getattr(reply,"message_id",None))
-            entry=pending.get(key)
-            if not entry or entry[1] <= time.monotonic():
+            message = getattr(update, "effective_message", None)
+            sender = getattr(message, "from_user", None)
+            raw_user_id = getattr(sender, "id", None)
+            if isinstance(raw_user_id, bool) or raw_user_id is None:
+                return
+            user_id = str(raw_user_id).strip()
+            if not user_id:
+                return
+            key = attachment_key(message, user_id)
+            entry = pending.get(key)
+            if entry is None or entry.expires_at <= time.monotonic():
                 pending.pop(key, None)
                 return
-            draft_id=entry[0]
-            checker=getattr(adapter,"_is_callback_user_authorized",None); chat=getattr(message,"chat",None)
-            if not callable(checker) or not checker(user_id,chat_id=key[1],chat_type=getattr(chat,"type",None),thread_id=key[2],user_name=getattr(sender,"first_name",None)): return
-            photos=getattr(message,"photo",None)
-            if not photos: return
+
+            checker = getattr(adapter, "_is_callback_user_authorized", None)
+            chat = getattr(message, "chat", None)
+            if not callable(checker) or not checker(
+                user_id,
+                chat_id=key[1],
+                chat_type=getattr(chat, "type", None),
+                thread_id=key[2],
+                user_name=getattr(sender, "first_name", None),
+            ):
+                # Authorization is checked both before storing intent and
+                # before executing the side effect. Do not let a stale intent
+                # consume future messages after access configuration changes.
+                pending.pop(key, None)
+                return
+
+            photos = getattr(message, "photo", None)
+            if not photos:
+                return
             try:
-                file=await photos[-1].get_file(); image=bytes(await file.download_as_bytearray()); getattr(action,"attach")(draft_id,f"telegram:{user_id}",image)
-                pending.pop(key,None)
-                text=getattr(reply,"text","")
-                if "📷 Фото прикреплено" not in text: await reply.edit_text(text=text+"\n\n📷 Фото прикреплено",reply_markup=getattr(reply,"reply_markup",None))
+                telegram_file = await photos[-1].get_file()
+                image = bytes(await telegram_file.download_as_bytearray())
+                # The Go CLI owns image validation, hashing, atomic local file
+                # persistence under URBAN_RADAR_MEDIA_DIR, and DB mutation.
+                action.attach(entry.draft_id, f"telegram:{user_id}", image)
             except Exception:
                 logger.exception("Urban Radar media attachment failed")
-                reply_fn=getattr(message,"reply_text",None)
-                if callable(reply_fn): await reply_fn("Не удалось сохранить фото. Повторите позже.")
-        application.add_handler(MessageHandler(filters.PHOTO & filters.REPLY, on_photo))
+                reply_fn = getattr(message, "reply_text", None)
+                if callable(reply_fn):
+                    await reply_fn("Не удалось сохранить фото. Повторите позже.")
+                return
+
+            pending.pop(key, None)
+            review_message = entry.review_message
+            text = getattr(review_message, "text", "")
+            edit_text = getattr(review_message, "edit_text", None)
+            if isinstance(text, str) and callable(edit_text) and "📷 Фото прикреплено" not in text:
+                try:
+                    await edit_text(
+                        text=text + "\n\n📷 Фото прикреплено",
+                        reply_markup=getattr(review_message, "reply_markup", None),
+                    )
+                except Exception:
+                    # Attachment is already durable. Keep the successful
+                    # acknowledgement separate from an optional card refresh.
+                    logger.exception("Urban Radar media attachment card update failed")
+            reply_fn = getattr(message, "reply_text", None)
+            if callable(reply_fn):
+                await reply_fn("📷 Фото прикреплено.")
+
+        # Register before Hermes' general media handler. The state-aware filter
+        # above is what prevents non-pending photos becoming a plugin turn.
+        application.add_handler(MessageHandler(PendingAttachmentPhotoFilter(), on_photo))
         async def on_reconciliation_text(update, context) -> None:
             del context
             message=getattr(update,"effective_message",None); reply=getattr(message,"reply_to_message",None); sender=getattr(message,"from_user",None); user_id=str(getattr(sender,"id","")).strip(); key=(user_id,getattr(reply,"chat_id",None),getattr(reply,"message_thread_id",None),getattr(reply,"message_id",None)); entry=pending_reconciliation.get(key)
