@@ -84,6 +84,13 @@ type Store interface {
 	SaveContentDraft(context.Context, Draft) error
 }
 
+// ReadyQueueStore is the production extension of Store. It returns persisted
+// terminal editorial candidates; it is not a second queue or scheduler.
+type ReadyQueueStore interface {
+	Store
+	ListReadyEvents(context.Context) ([]ReadyEvent, error)
+}
+
 type Result struct {
 	Draft Draft  `json:"draft"`
 	Error string `json:"error,omitempty"`

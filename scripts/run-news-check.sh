@@ -64,5 +64,15 @@ fi
   exit_code=$?
   set -e
   printf '%s news-check finished: exit_code=%d\n' "$(date -Is)" "$exit_code"
+  if [[ "$exit_code" -ne 0 ]]; then
+    exit "$exit_code"
+  fi
+
+  printf '%s content-process-ready started\n' "$(date -Is)"
+  set +e
+  docker compose --project-directory "$project_dir" --env-file "$env_file" -f "$compose_file" run --rm urban-radar content process-ready
+  exit_code=$?
+  set -e
+  printf '%s content-process-ready finished: exit_code=%d\n' "$(date -Is)" "$exit_code"
   exit "$exit_code"
 }

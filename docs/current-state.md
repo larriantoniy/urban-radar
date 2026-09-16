@@ -11,18 +11,22 @@ An authorized Telegram Approve invokes Publisher only after the independent
 approval transaction has committed. The bridge invokes the existing
 `urban-radar content publish <draft-id>` boundary; it does not call VK itself.
 
-The current review path is deterministic:
+The current READY-to-review path is deterministic:
 
 ```text
-ContentDraft PENDING
-→ targeted `urban-radar content review-notify --draft-id <id>`
+READY_TO_PUBLISH source item
+→ `urban-radar content process-ready`
+→ content generation/reuse → ContentDraft PENDING → deterministic review-notify
 → Hermes Telegram/PTB notification with inline buttons
 → authenticated `ur:approve:<content_draft_id>` or `ur:reject:<content_draft_id>` callback
 → `ReviewService`
 → PostgreSQL
 ```
 
-The notification command is controlled/manual; it is not automatically wired after NewsCheck.
+The cron wrapper runs `content process-ready` after a successful `news check`.
+It selects persisted `READY_TO_PUBLISH` records in stable source order,
+reuses an exact draft when possible, and sends a review card only for an
+undelivered `PENDING` draft. It never publishes to VK.
 
 ## Validated milestones
 
@@ -162,7 +166,6 @@ item is `PUBLISHED` and no VK call has occurred.
 
 ## Known gaps
 
-- Automatic notification after NewsCheck is not wired.
 - Notification delivery is not exactly-once; there is no outbox or retry worker.
 
 The production deployment contract provides a long-running `hermes-gateway`

@@ -27,6 +27,7 @@ func NewPostgresStore(db *sql.DB) *PostgresStore { return &PostgresStore{db: db}
 var _ urruntime.Store = (*PostgresStore)(nil)
 var _ newscheck.Store = (*PostgresStore)(nil)
 var _ content.Store = (*PostgresStore)(nil)
+var _ content.ReadyQueueStore = (*PostgresStore)(nil)
 var _ content.ReviewStore = (*PostgresStore)(nil)
 var _ content.ReviewNotificationStore = (*PostgresStore)(nil)
 var _ content.MediaStore = (*PostgresStore)(nil)
@@ -418,6 +419,29 @@ func (r *PostgresStore) LoadReadyEvents(ctx context.Context, refs []content.Sour
 		result = append(result, content.ReadyEvent{Item: record.Item, Discovery: *record.Discovery, Editor: *record.Editor})
 	}
 	return result, nil
+}
+
+// ListReadyEvents is the production READY_TO_PUBLISH selection. Ordering is
+// stable so repeated runs process the same persisted queue deterministically.
+func (r *PostgresStore) ListReadyEvents(ctx context.Context) ([]content.ReadyEvent, error) {
+	rows, err := r.db.QueryContext(ctx, runtimeSelect+` WHERE processing_state='READY_TO_PUBLISH'
+ORDER BY published_at_source ASC NULLS LAST, source ASC, source_item_id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var events []content.ReadyEvent
+	for rows.Next() {
+		record, err := scanRuntime(rows)
+		if err != nil {
+			return nil, err
+		}
+		if record.Discovery == nil || record.Editor == nil || !editorOutputPublishes(record.Editor.Output) {
+			return nil, fmt.Errorf("%s/%s is not a materialized READY_TO_PUBLISH event", record.Item.Source, record.Item.SourceItemID)
+		}
+		events = append(events, content.ReadyEvent{Item: record.Item, Discovery: *record.Discovery, Editor: *record.Editor})
+	}
+	return events, rows.Err()
 }
 
 func editorOutputPublishes(raw json.RawMessage) bool {

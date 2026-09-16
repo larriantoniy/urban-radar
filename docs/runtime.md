@@ -220,6 +220,22 @@ long-running Compose services; `urban-radar` is created for one CLI invocation
 and removed after it exits. PostgreSQL is private to the Compose network and
 persists in the named `postgres_data` volume.
 
+After a successful (including the existing exit-0 `PARTIAL`) `news check`, the
+same wrapper runs `urban-radar content process-ready`. That command selects the
+stable `READY_TO_PUBLISH` queue, generates or reuses content drafts, and sends
+only undelivered pending review cards. A non-zero NewsCheck prevents this
+downstream stage; a downstream error makes the wrapper non-zero. Neither stage
+publishes to VK: publication remains the committed Telegram human-approval
+flow.
+
+`content process-ready` runs in the one-shot `urban-radar` container and uses
+the existing plugin-owned sender at
+`/var/lib/hermes/plugins/urban-radar-telegram-review-experiment/review_notify.py`.
+That container therefore receives the same `TELEGRAM_BOT_TOKEN` and
+`TELEGRAM_HOME_CHANNEL` as the gateway; callback authorization remains gateway-
+only and continues to use `TELEGRAM_ALLOWED_USERS`. The sender file in the
+operator-owned Hermes home must be executable.
+
 ### Install Docker and deploy
 
 The following is a clean personal Ubuntu VPS procedure. The host operator is

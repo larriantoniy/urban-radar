@@ -25,6 +25,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN must be set}
+      TELEGRAM_HOME_CHANNEL: ${TELEGRAM_HOME_CHANNEL:?TELEGRAM_HOME_CHANNEL must be set}
       ALL_PROXY: socks5://host.docker.internal:10808
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
       ZAKUPKI_SEARCH_URL: ${ZAKUPKI_SEARCH_URL:?ZAKUPKI_SEARCH_URL must be set}
@@ -33,6 +35,7 @@ services:
       HOME: /home/urban-radar
       TMPDIR: /tmp
       URBAN_RADAR_MEDIA_DIR: /var/lib/urban-radar/media
+      URBAN_RADAR_REVIEW_NOTIFY_COMMAND: /var/lib/hermes/plugins/urban-radar-telegram-review-experiment/review_notify.py
       VK_ACCESS_TOKEN: ${VK_ACCESS_TOKEN:?VK_ACCESS_TOKEN must be set}
       VK_GROUP_ID: ${VK_GROUP_ID:?VK_GROUP_ID must be set}
     read_only: true

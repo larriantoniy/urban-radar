@@ -24,7 +24,13 @@ if [[ "${1:-}" == "compose" && "${2:-}" == "version" ]]; then
   exit 0
 fi
 printf '%s\n' "$*" >>"${FAKE_DOCKER_CALLS:?}"
-exit "${FAKE_DOCKER_EXIT:-0}"
+call_file="${FAKE_DOCKER_CALL_COUNT:?}"
+count=0
+[[ -f "$call_file" ]] && count="$(cat "$call_file")"
+count=$((count + 1))
+printf '%s' "$count" >"$call_file"
+IFS=',' read -r -a exits <<<"${FAKE_DOCKER_EXITS:-0}"
+exit "${exits[$((count - 1))]:-0}"
 EOF
 chmod +x "$tmp/bin/docker"
 printf '%s\n' \
@@ -46,7 +52,8 @@ run_wrapper() {
     URBAN_RADAR_RUN_DIR="$tmp/run" \
     URBAN_RADAR_LOG_DIR="$tmp/logs" \
     FAKE_DOCKER_CALLS="$tmp/docker.calls" \
-    FAKE_DOCKER_EXIT="${1:-0}" \
+    FAKE_DOCKER_CALL_COUNT="$tmp/docker.count" \
+    FAKE_DOCKER_EXITS="${1:-0}" \
     "$wrapper"
 }
 
@@ -62,26 +69,39 @@ set -e
 [[ "$missing_compose_status" -ne 0 ]]
 [[ "$missing_docker_status" -ne 0 ]]
 
-run_wrapper 0
+rm -f "$tmp/docker.count"
+run_wrapper 0,0
 
 set +e
+rm -f "$tmp/docker.count"
 run_wrapper 23
 child_status=$?
 set -e
 [[ "$child_status" -eq 23 ]]
+
+set +e
+rm -f "$tmp/docker.count"
+run_wrapper 0,41
+downstream_status=$?
+set -e
+[[ "$downstream_status" -eq 41 ]]
 
 lock_file="$tmp/run/news-check.lock"
 flock "$lock_file" sleep 2 &
 holder=$!
 sleep 0.1
 set +e
-run_wrapper 0
+rm -f "$tmp/docker.count"
+run_wrapper 0,0
 lock_status=$?
 set -e
 wait "$holder"
 [[ "$lock_status" -eq 75 ]]
 grep -q 'news-check started' "$tmp/logs/news-check.log"
 grep -q 'news-check finished: exit_code=23' "$tmp/logs/news-check.log"
+grep -q 'content-process-ready started' "$tmp/logs/news-check.log"
+grep -q 'content-process-ready finished: exit_code=41' "$tmp/logs/news-check.log"
 grep -q 'news-check skipped: lock already held' "$tmp/logs/news-check.log"
 grep -q 'run --rm urban-radar news check' "$tmp/docker.calls"
+grep -q 'run --rm urban-radar content process-ready' "$tmp/docker.calls"
 printf 'PASS: run-news-check wrapper mechanics\n'

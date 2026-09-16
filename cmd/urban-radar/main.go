@@ -33,6 +33,10 @@ func main() {
 		contentExperimentV1(os.Args[3:])
 		return
 	}
+	if len(os.Args) >= 3 && os.Args[1] == "content" && os.Args[2] == "process-ready" {
+		contentProcessReady(os.Args[3:])
+		return
+	}
 	if len(os.Args) >= 3 && os.Args[1] == "content" && os.Args[2] == "review" {
 		contentReview(os.Args[3:])
 		return
@@ -307,7 +311,7 @@ func writeSummary(summary newscheck.Summary, err error) {
 }
 
 func usage() string {
-	return "usage: urban-radar tgl list | urban-radar tgl get <url> | urban-radar news check [--preflight] [flags] | urban-radar content experiment-v1 [--item source/source_item_id] [flags] | urban-radar content review approve|reject <draft-id> --actor <actor> | urban-radar content review-notify [--draft-id <id>] | urban-radar content publish <draft-id> | urban-radar publication retry <publication-id> | urban-radar publication recover <publication-id> --actor <actor> | urban-radar publication reconcile <publication-id> --published --external-post-id <id> --actor <actor> | --not-published --actor <actor> | urban-radar media attach <draft-id> --actor <actor> | urban-radar media cleanup [--dry-run]"
+	return "usage: urban-radar tgl list | urban-radar tgl get <url> | urban-radar news check [--preflight] [flags] | urban-radar content experiment-v1 [--item source/source_item_id] [flags] | urban-radar content process-ready [flags] | urban-radar content review approve|reject <draft-id> --actor <actor> | urban-radar content review-notify [--draft-id <id>] | urban-radar content publish <draft-id> | urban-radar publication retry <publication-id> | urban-radar publication recover <publication-id> --actor <actor> | urban-radar publication reconcile <publication-id> --published --external-post-id <id> --actor <actor> | --not-published --actor <actor> | urban-radar media attach <draft-id> --actor <actor> | urban-radar media cleanup [--dry-run]"
 }
 
 func contentPublish(args []string) {

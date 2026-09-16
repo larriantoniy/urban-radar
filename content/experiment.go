@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -50,22 +51,46 @@ func (e Experiment) Run(ctx context.Context, refs []SourceRef) (Summary, error) 
 		if !ok {
 			return Summary{}, fmt.Errorf("missing READY_TO_PUBLISH event %s/%s", ref.Source, ref.SourceItemID)
 		}
-		input := inputHash(event)
-		if draft, found, err := e.Store.FindContentDraft(ctx, event.Item.Source, event.Item.SourceItemID, StyleVersion, PlatformVK, input); err != nil {
-			return summary, err
-		} else if found {
-			summary.Usage.Add(draft.Usage)
-			summary.Results = append(summary.Results, Result{Draft: draft})
-			continue
+		draft, _, err := e.EnsureDraft(ctx, event)
+		summary.Usage.Add(draft.Usage)
+		if err != nil {
+			summary.Results = append(summary.Results, Result{Draft: draft, Error: err.Error()})
+			return summary, fmt.Errorf("content draft %s/%s: %s", ref.Source, ref.SourceItemID, err)
 		}
-		result := e.generate(ctx, event, input)
-		summary.Usage.Add(result.Draft.Usage)
-		summary.Results = append(summary.Results, result)
-		if result.Error != "" {
-			return summary, fmt.Errorf("content draft %s/%s: %s", ref.Source, ref.SourceItemID, result.Error)
-		}
+		summary.Results = append(summary.Results, Result{Draft: draft})
 	}
 	return summary, nil
+}
+
+// EnsureDraft reuses an exact persisted draft or generates one from the
+// current persisted READY_TO_PUBLISH event. It deliberately never mutates an
+// existing approved or rejected draft.
+func (e Experiment) EnsureDraft(ctx context.Context, event ReadyEvent) (Draft, bool, error) {
+	if e.Store == nil || e.Agent == nil {
+		return Draft{}, false, fmt.Errorf("content experiment requires store and agent")
+	}
+	input := inputHash(event)
+	draft, found, err := e.Store.FindContentDraft(ctx, event.Item.Source, event.Item.SourceItemID, StyleVersion, PlatformVK, input)
+	if err != nil {
+		return Draft{}, false, err
+	}
+	if found {
+		return draft, false, nil
+	}
+	result := e.generate(ctx, event, input)
+	if result.Error != "" {
+		return result.Draft, false, errors.New(result.Error)
+	}
+	// SaveContentDraft has an idempotency constraint. Read the persisted row so
+	// the caller always receives its durable draft ID for review notification.
+	draft, found, err = e.Store.FindContentDraft(ctx, event.Item.Source, event.Item.SourceItemID, StyleVersion, PlatformVK, input)
+	if err != nil {
+		return result.Draft, false, err
+	}
+	if !found {
+		return result.Draft, false, fmt.Errorf("content draft was not persisted")
+	}
+	return draft, true, nil
 }
 
 func (e Experiment) generate(ctx context.Context, event ReadyEvent, sourceInputHash string) Result {
