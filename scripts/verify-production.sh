@@ -38,6 +38,42 @@ service_status() {
   [[ "$required_health" != true || "$state" == *' healthy' ]]
 }
 
+# Hermes persists adapter connection state in its profile-owned runtime status
+# file. This is a local read only; it does not contact the Telegram API.
+gateway_telegram_connected() {
+  "${compose[@]}" exec -T hermes-gateway /opt/hermes-venv/bin/python -c '
+import json
+import os
+import pathlib
+import sys
+
+status_path = pathlib.Path(os.environ["HERMES_HOME"]) / "gateway_state.json"
+try:
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+except (OSError, ValueError):
+    print("telegram adapter: runtime status unavailable")
+    raise SystemExit(1)
+platforms = status.get("platforms")
+telegram = platforms.get("telegram") if isinstance(platforms, dict) else None
+state = telegram.get("state") if isinstance(telegram, dict) else None
+print(f"telegram adapter: {state or 'unknown'}")
+raise SystemExit(0 if state == "connected" else 1)
+'
+}
+
+wait_for_gateway_telegram_connected() {
+  local attempt output=''
+  for attempt in $(seq 1 15); do
+    if output="$(gateway_telegram_connected 2>&1)"; then
+      printf '%s\n' "$output"
+      return 0
+    fi
+    sleep 2
+  done
+  printf '%s\n' "${output:-telegram adapter: runtime status unavailable}" >&2
+  return 1
+}
+
 main() {
   local script_dir repository_root env_file compose_file hermes_home mode status_failed=0 assets_failed=0
   script_dir="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -88,6 +124,7 @@ main() {
     "${compose[@]}" ps || status_failed=1
     service_status postgres true || status_failed=1
     service_status hermes-gateway false || status_failed=1
+    gateway_telegram_connected || status_failed=1
     if ! "${compose[@]}" exec hermes-gateway /opt/hermes-venv/bin/hermes gateway status; then
       printf 'hermes-gateway: gateway status unavailable\n' >&2
       status_failed=1
@@ -97,6 +134,7 @@ main() {
 
   service_status postgres true || fail 'postgres is not running and healthy'
   service_status hermes-gateway false || fail 'hermes-gateway is not running'
+  wait_for_gateway_telegram_connected || fail 'telegram adapter did not become connected within 30 seconds'
   "${compose[@]}" run --rm --no-deps --entrypoint sh urban-radar -lc '
     test -f /var/lib/hermes/skills/urban-radar-editorial-style-v1/SKILL.md &&
     test -x /var/lib/hermes/plugins/urban-radar-telegram-review-experiment/review_notify.py &&

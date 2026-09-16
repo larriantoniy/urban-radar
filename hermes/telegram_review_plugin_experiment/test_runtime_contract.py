@@ -29,6 +29,20 @@ class ProductionRuntimeContractTests(unittest.TestCase):
         self.assertIn("URBAN_RADAR_REVIEW_COMMAND: /usr/local/bin/urban-radar", one_shot)
         self.assertIn("URBAN_RADAR_REVIEW_COMMAND_TIMEOUT_SECONDS: ${URBAN_RADAR_REVIEW_COMMAND_TIMEOUT_SECONDS:-45}", one_shot)
 
+    def test_gateway_keeps_read_only_root_with_a_profile_scoped_lock_directory(self) -> None:
+        compose = (REPOSITORY_ROOT / "compose.yaml").read_text(encoding="utf-8")
+        gateway = compose_service(compose, "hermes-gateway")
+        self.assertIn("read_only: true", gateway)
+        self.assertIn("HERMES_GATEWAY_LOCK_DIR: /var/lib/hermes/gateway-locks", gateway)
+        self.assertNotIn("read_only: false", gateway)
+
+    def test_production_verification_requires_a_connected_telegram_adapter(self) -> None:
+        verification = (REPOSITORY_ROOT / "scripts" / "verify-production.sh").read_text(encoding="utf-8")
+        self.assertIn('status.get("platforms")', verification)
+        self.assertIn('platforms.get("telegram")', verification)
+        self.assertIn('state == "connected"', verification)
+        self.assertIn("wait_for_gateway_telegram_connected", verification)
+
 
 if __name__ == "__main__":
     unittest.main()

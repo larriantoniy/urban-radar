@@ -404,6 +404,13 @@ PostgreSQL. The one-shot `urban-radar` service remains the manual/cron runtime.
 Both mount the same host media directory at `/var/lib/urban-radar/media` and
 receive the same `DATABASE_URL`, `VK_ACCESS_TOKEN`, and `VK_GROUP_ID`.
 
+The gateway keeps its root filesystem read-only. Hermes' token-scoped gateway
+lock is explicitly placed at `/var/lib/hermes/gateway-locks` through
+`HERMES_GATEWAY_LOCK_DIR`; it is part of the existing UID/GID `10001`
+`/var/lib/hermes` bind mount. It replaces the Hermes default
+`$HOME/.local/state` only for this token-scoped lock. Persistent
+profile/configuration state remains under that same mount.
+
 When a gateway is deliberately deployed, its own process environment must
 contain both of these values before plugin discovery:
 

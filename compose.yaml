@@ -74,6 +74,9 @@ services:
       ALL_PROXY: socks5://host.docker.internal:10808
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
       HERMES_HOME: /var/lib/hermes
+      # Hermes gateway token-scoped runtime locks otherwise default to
+      # $HOME/.local/state, which is immutable in this hardened container.
+      HERMES_GATEWAY_LOCK_DIR: /var/lib/hermes/gateway-locks
       HOME: /home/urban-radar
       TMPDIR: /tmp
       URBAN_RADAR_MEDIA_DIR: /var/lib/urban-radar/media
