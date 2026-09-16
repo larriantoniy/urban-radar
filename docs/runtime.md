@@ -276,6 +276,10 @@ make verify-production # safe runtime verification only
 make production-status # Compose and Hermes gateway status
 ```
 
+`make verify-production` is fail-closed. `make production-status` is also
+read-only, but prints managed-asset, Compose, PostgreSQL and gateway diagnostics
+before returning non-zero when any observed component is unhealthy.
+
 ### Install Docker and deploy
 
 The following is a clean personal Ubuntu VPS procedure. The host operator is
