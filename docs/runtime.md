@@ -236,6 +236,20 @@ That container therefore receives the same `TELEGRAM_BOT_TOKEN` and
 only and continues to use `TELEGRAM_ALLOWED_USERS`. The sender file in the
 operator-owned Hermes home must be executable.
 
+The versioned Content style skill is deliberately image-owned, not part of the
+operator-owned `HERMES_HOME`: a rebuilt image contains
+`/app/.hermes/skills/urban-radar-editorial-style-v1/SKILL.md`, which Hermes
+finds from its `/app` project root. Verify this after every image rebuild:
+
+```sh
+docker compose \
+  --env-file /opt/urban-radar/.env \
+  run --rm \
+  --entrypoint sh \
+  urban-radar \
+  -lc 'test -f /app/.hermes/skills/urban-radar-editorial-style-v1/SKILL.md && echo OK'
+```
+
 ### Install Docker and deploy
 
 The following is a clean personal Ubuntu VPS procedure. The host operator is
