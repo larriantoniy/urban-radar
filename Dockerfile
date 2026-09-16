@@ -23,6 +23,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-s -w' -o /out/urban-r
 FROM python:3.12-slim-bookworm AS hermes-builder
 ARG HERMES_REF=05f548f35dd3242bf2ff74743e9112acde251f77
 
+COPY hermes/patches/0001-disarm-ptb-cold-start-poller.patch /tmp/hermes-cold-start-poller.patch
+
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git \
  && rm -rf /var/lib/apt/lists/* \
@@ -33,6 +35,8 @@ RUN apt-get update \
  && git -C /opt/hermes-src fetch -q --depth=1 origin "${HERMES_REF}" \
  && git -C /opt/hermes-src checkout -q --detach FETCH_HEAD \
  && test "$(git -C /opt/hermes-src rev-parse HEAD)" = "${HERMES_REF}" \
+ && git -C /opt/hermes-src apply --check /tmp/hermes-cold-start-poller.patch \
+ && git -C /opt/hermes-src apply /tmp/hermes-cold-start-poller.patch \
  && cd /opt/hermes-src \
  && UV_PYTHON=/opt/hermes-venv/bin/python UV_PROJECT_ENVIRONMENT=/opt/hermes-venv /opt/hermes-venv/bin/uv sync --locked --extra messaging \
  && /opt/hermes-venv/bin/hermes --help >/dev/null

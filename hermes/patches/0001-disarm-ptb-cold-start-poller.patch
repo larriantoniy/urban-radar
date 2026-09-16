@@ -1,0 +1,103 @@
+diff --git a/plugins/platforms/telegram/adapter.py b/plugins/platforms/telegram/adapter.py
+index d50f631c2..b56beb194 100644
+--- a/plugins/platforms/telegram/adapter.py
++++ b/plugins/platforms/telegram/adapter.py
+@@ -3021,6 +3021,17 @@ class TelegramAdapter(BasePlatformAdapter):
+                     if error_callback is not None:
+                         error_callback(error)
+                     return
++                # A strict cold-start error makes this whole adapter attempt
++                # disposable. PTB's network_retry_loop otherwise keeps the
++                # current getUpdates generation alive after this callback
++                # returns, while GatewayRunner unwinds connect(), performs its
++                # bounded cleanup, and creates a fresh adapter. If that
++                # cleanup times out, the old PTB poller and replacement can
++                # overlap and self-inflict Telegram 409 conflicts. Disarm the
++                # retry loop synchronously before waking the strict waiter;
++                # this is the same ownership fence used by the normal
++                # steady-state conflict callback.
++                self._disarm_ptb_retry_loop()
+                 if not strict_error:
+                     strict_error.append(error)
+                 # PTB invokes error callbacks from the polling task; the
+diff --git a/tests/gateway/test_telegram_conflict.py b/tests/gateway/test_telegram_conflict.py
+index 4fc9c6db9..70c460f18 100644
+--- a/tests/gateway/test_telegram_conflict.py
++++ b/tests/gateway/test_telegram_conflict.py
+@@ -70,6 +70,7 @@ async def test_polling_conflict_retries_before_fatal(monkeypatch):
+         start_polling=AsyncMock(side_effect=fake_start_polling),
+         stop=AsyncMock(),
+         running=True,
++        _Updater__polling_task_stop_event=asyncio.Event(),
+     )
+     bot = SimpleNamespace(set_my_commands=AsyncMock(), delete_webhook=AsyncMock())
+     app = SimpleNamespace(
+@@ -99,6 +100,7 @@ async def test_polling_conflict_retries_before_fatal(monkeypatch):
+ 
+     # First conflict: should retry, NOT be fatal
+     captured["error_callback"](conflict("Conflict: terminated by other getUpdates request"))
++    assert updater._Updater__polling_task_stop_event.is_set()
+     await adapter._polling_error_task
+ 
+     assert adapter.has_fatal_error is False, "First conflict should not be fatal"
+diff --git a/tests/gateway/test_telegram_start_polling_timeout.py b/tests/gateway/test_telegram_start_polling_timeout.py
+index c2037cc2a..b20096003 100644
+--- a/tests/gateway/test_telegram_start_polling_timeout.py
++++ b/tests/gateway/test_telegram_start_polling_timeout.py
+@@ -152,3 +152,56 @@ async def test_initial_connect_polling_error_fails_fast_not_background(monkeypat
+     assert recovery_scheduled == []
+ 
+ 
++@pytest.mark.asyncio
++async def test_initial_conflict_disarms_ptb_retry_before_cold_start_escapes(monkeypatch):
++    """A strict cold-start 409 cannot leave PTB polling for a replacement.
++
++    Gateway cleanup is intentionally bounded. If the strict callback merely
++    woke its waiter, PTB 22.8's infinite network_retry_loop could continue
++    getUpdates while GatewayRunner creates the next adapter after a timed-out
++    cleanup. The stop event must be set synchronously in the callback, before
++    the strict failure escapes this adapter attempt.
++    """
++    monkeypatch.setattr(tg_adapter, "_INITIAL_POLLING_PROGRESS_TIMEOUT", 30.0)
++    a = _bare_adapter()
++    app = MagicMock()
++    app.updater = AsyncMock()
++    ptb_stop_event = asyncio.Event()
++    app.updater._Updater__polling_task_stop_event = ptb_stop_event
++    a._app = app
++
++    captured_callbacks = []
++
++    async def start_polling_capture(**kwargs):
++        captured_callbacks.append(kwargs["error_callback"])
++
++    app.updater.start_polling = AsyncMock(side_effect=start_polling_capture)
++    async def ptb_retry_loop():
++        await ptb_stop_event.wait()
++
++    stale_poller = asyncio.create_task(ptb_retry_loop())
++    cold_start = asyncio.create_task(
++        a._start_polling_resilient(
++            drop_pending_updates=True,
++            error_callback=AsyncMock(),
++            require_progress=True,
++        )
++    )
++    for _ in range(10):
++        await asyncio.sleep(0)
++        if captured_callbacks:
++            break
++    assert captured_callbacks
++
++    captured_callbacks[0](Exception("Conflict: terminated by other getUpdates request"))
++    # This assertion intentionally precedes awaiting cold_start: it proves
++    # PTB is fenced before GatewayRunner can dispose/replace this adapter.
++    assert ptb_stop_event.is_set()
++    await asyncio.wait_for(stale_poller, timeout=1)
++
++    # A replacement is safe to start only after the previous poller's stop
++    # event has been observed. This is a no-network model of PTB's
++    # network_retry_loop ownership boundary.
++
++    with pytest.raises(OSError, match="errored before first getUpdates"):
++        await asyncio.wait_for(cold_start, timeout=5)
