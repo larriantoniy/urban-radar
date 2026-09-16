@@ -30,8 +30,17 @@ URBAN_RADAR_REPOSITORY_ROOT="$source_root" URBAN_RADAR_HERMES_HOME="$runtime_hom
 test -f "$runtime_home/skills/urban-radar-editorial-style-v1/SKILL.md"
 test -x "$runtime_home/plugins/urban-radar-telegram-review-experiment/review_notify.py"
 test ! -e "$runtime_home/plugins/urban-radar-telegram-review-experiment/test_contract.py"
-[[ "$(stat -c '%u:%g' "$runtime_home/skills/urban-radar-editorial-style-v1")" == "$numeric_uid:$numeric_gid" ]]
-[[ "$(stat -c '%u:%g' "$runtime_home/plugins/urban-radar-telegram-review-experiment")" == "$numeric_uid:$numeric_gid" ]]
+skill_dest="$runtime_home/skills/urban-radar-editorial-style-v1"
+plugin_dest="$runtime_home/plugins/urban-radar-telegram-review-experiment"
+[[ "$(stat -c '%a' "$skill_dest")" == 750 ]]
+[[ "$(stat -c '%a' "$plugin_dest")" == 750 ]]
+[[ "$(stat -c '%a' "$skill_dest/SKILL.md")" == 640 ]]
+[[ "$(stat -c '%a' "$plugin_dest/__init__.py")" == 640 ]]
+[[ "$(stat -c '%a' "$plugin_dest/plugin.yaml")" == 640 ]]
+[[ "$(stat -c '%a' "$plugin_dest/review_notify.py")" == 750 ]]
+for path in "$skill_dest" "$skill_dest/SKILL.md" "$plugin_dest" "$plugin_dest/review_notify.py"; do
+  [[ "$(stat -c '%u:%g' "$path")" == "$numeric_uid:$numeric_gid" ]]
+done
 
 mkdir -p "$runtime_home/skills/operator-skill" "$runtime_home/plugins/operator-plugin"
 printf operator >"$runtime_home/skills/operator-skill/keep"
@@ -44,4 +53,7 @@ grep -qx 'updated' "$runtime_home/skills/urban-radar-editorial-style-v1/SKILL.md
 test ! -e "$runtime_home/plugins/urban-radar-telegram-review-experiment/stale.py"
 test -f "$runtime_home/skills/operator-skill/keep"
 test -f "$runtime_home/plugins/operator-plugin/keep"
+[[ "$(stat -c '%a' "$plugin_dest/review_notify.py")" == 750 ]]
+[[ "$(stat -c '%a' "$skill_dest/SKILL.md")" == 640 ]]
+[[ "$(stat -c '%u:%g' "$plugin_dest/review_notify.py")" == "$numeric_uid:$numeric_gid" ]]
 printf 'PASS: deploy-hermes-assets mechanics\n'

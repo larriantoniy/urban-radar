@@ -69,6 +69,24 @@ replace_managed_directory() {
 replace_managed_directory "$stage/skill" "$hermes_home/skills/$skill_name"
 replace_managed_directory "$stage/plugin" "$hermes_home/plugins/$plugin_name"
 
-test -f "$hermes_home/skills/$skill_name/SKILL.md"
-test -x "$hermes_home/plugins/$plugin_name/review_notify.py"
+skill_destination="$hermes_home/skills/$skill_name"
+plugin_destination="$hermes_home/plugins/$plugin_name"
+
+# `mv` normally preserves staging metadata, but the deploy contract is about
+# the final persistent destination. Normalize it explicitly after replacement
+# so prior host state or filesystem behavior cannot leave a non-executable
+# review sender behind.
+normalize_managed_directory() {
+  local destination="$1"
+  find "$destination" -type d -exec chmod 0750 {} +
+  find "$destination" -type f -exec chmod 0640 {} +
+  chown -R "$runtime_uid:$runtime_gid" "$destination"
+}
+
+normalize_managed_directory "$skill_destination"
+normalize_managed_directory "$plugin_destination"
+chmod 0750 "$plugin_destination/review_notify.py"
+
+test -f "$skill_destination/SKILL.md"
+test -x "$plugin_destination/review_notify.py"
 printf 'Urban Radar Hermes assets synchronized to %s\n' "$hermes_home"
