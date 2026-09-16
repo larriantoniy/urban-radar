@@ -36,7 +36,12 @@ stage="$(mktemp -d "${parent_dir}/.urban-radar-hermes-assets.XXXXXX")"
 cleanup() { rm -rf "$stage"; }
 trap cleanup EXIT
 
-install -d -o "$runtime_uid" -g "$runtime_gid" -m 0750 "$hermes_home/skills" "$hermes_home/plugins"
+# GNU install resolves -o/-g arguments as account names on this host. The
+# container runtime identity is intentionally a numeric UID/GID with no host
+# passwd/group entry, so create paths first and assign numeric ownership only
+# through chown below.
+install -d -m 0750 "$hermes_home/skills" "$hermes_home/plugins"
+chown "$runtime_uid:$runtime_gid" "$hermes_home/skills" "$hermes_home/plugins"
 install -d -m 0750 "$stage/skill" "$stage/plugin"
 install -m 0640 "${skill_source}/SKILL.md" "$stage/skill/SKILL.md"
 install -m 0640 "${plugin_source}/__init__.py" "$stage/plugin/__init__.py"

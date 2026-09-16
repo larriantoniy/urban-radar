@@ -253,7 +253,7 @@ Hermes profile is the runtime location:
 /var/lib/hermes/
 ```
 
-Run the root-only deploy operation after every Git update, never from cron:
+Run the root-only asset operation after every Git update, never from cron:
 
 ```sh
 sudo /srv/urban-radar/scripts/deploy-hermes-assets.sh
@@ -262,6 +262,19 @@ sudo /srv/urban-radar/scripts/deploy-hermes-assets.sh
 It atomically replaces only the managed Urban Radar skill/plugin directories,
 removes stale files within those directories, sets ownership to `10001:10001`,
 and preserves all other Hermes configuration, skills and plugins.
+
+For ordinary deployment use the repository Makefile as the normal `radar`
+user. It keeps Git and Docker under that user and uses `sudo` only for the
+numeric container-ownership asset sync:
+
+```sh
+cd /srv/urban-radar
+make deploy            # preflight, git pull --ff-only, assets, build, gateway reload, verify
+make deploy-no-pull    # deploy the current checkout without changing Git state
+make deploy-assets     # managed Hermes assets plus host assertion only
+make verify-production # safe runtime verification only
+make production-status # Compose and Hermes gateway status
+```
 
 ### Install Docker and deploy
 
@@ -272,7 +285,7 @@ non-root *container* identity.
 
 ```sh
 sudo apt update
-sudo apt install -y ca-certificates curl git
+sudo apt install -y ca-certificates curl git make
 sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 sudo chmod a+r /etc/apt/keyrings/docker.asc
@@ -284,7 +297,8 @@ sudo docker compose version
 
 sudo usermod -aG docker radar
 sudo install -d -o radar -g radar /srv/urban-radar /opt/urban-radar/{bin,logs,run,secrets}
-sudo install -d -m 0750 -o 10001 -g 10001 /opt/urban-radar/{hermes,media}
+sudo install -d -m 0750 /opt/urban-radar/{hermes,media}
+sudo chown 10001:10001 /opt/urban-radar/{hermes,media}
 git clone <REPOSITORY_URL> /srv/urban-radar
 git -C /srv/urban-radar checkout <VALIDATED_COMMIT>
 sudo install -m 700 -o radar -g radar /srv/urban-radar/scripts/run-news-check.sh /opt/urban-radar/bin/run-news-check
@@ -420,17 +434,17 @@ copied into the image or Git.
 
 ### VPS validation, database, migrations and first controlled run
 
-Build the image and start the long-running production topology:
+For a normal update, use the single deployment command:
 
 ```sh
 cd /srv/urban-radar
-git pull --ff-only
-sudo /srv/urban-radar/scripts/deploy-hermes-assets.sh
-docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml build
-docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml up -d postgres
-docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml up -d --force-recreate hermes-gateway
-docker compose --project-directory /srv/urban-radar --env-file /opt/urban-radar/.env -f /srv/urban-radar/compose.yaml ps
+make deploy
 ```
+
+`make deploy` builds the shared image, starts PostgreSQL only if absent with
+`--no-recreate`, and recreates only `hermes-gateway` so it reloads the new
+image and synchronized plugin. `urban-radar` remains a one-shot Compose
+service and uses the rebuilt image on its next `docker compose run --rm`.
 
 Before activating cron, run these safe configuration checks as `radar`. They
 do not call Urban Radar collection, Telegram, or VK:
@@ -438,8 +452,9 @@ do not call Urban Radar collection, Telegram, or VK:
 ```sh
 cd /srv/urban-radar
 
-test -f /opt/urban-radar/hermes/skills/urban-radar-editorial-style-v1/SKILL.md
-test -x /opt/urban-radar/hermes/plugins/urban-radar-telegram-review-experiment/review_notify.py
+# The managed directories are intentionally UID/GID 10001 and mode 0750.
+sudo test -f /opt/urban-radar/hermes/skills/urban-radar-editorial-style-v1/SKILL.md
+sudo test -x /opt/urban-radar/hermes/plugins/urban-radar-telegram-review-experiment/review_notify.py
 
 docker compose \
   --env-file /opt/urban-radar/.env \
