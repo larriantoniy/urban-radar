@@ -578,7 +578,7 @@ Confirm the server timezone with `timedatectl`, then, as `radar`, run
 
 ```cron
 CRON_TZ=Europe/Samara
-30 20 * * * /opt/urban-radar/bin/run-news-check
+30 08 * * * /opt/urban-radar/bin/run-news-check
 ```
 
 Use the same wrapper for a safe manual run. To pause scheduling, comment out

@@ -31,6 +31,21 @@ The `usage` field in a `content process-ready` summary reports Content Agent
 usage incurred by that invocation only; persisted historical usage from reused
 drafts is not counted as a new API call.
 
+## MVP baseline — 2026-09-17
+
+**Status: production MVP operational.** The deployed daily flow is:
+
+```text
+cron → one host flock → news check (TGL + Zakupki) → Discovery → Editor
+→ READY_TO_PUBLISH → content process-ready → Telegram human review
+→ explicit Approve/Reject → VK only after approval
+```
+
+PostgreSQL remains the durable authority, `process-ready` is idempotent, and
+cron never approves or publishes. A transient DNS failure can make one source
+`PARTIAL`; successful sources still continue through the pipeline. The next
+phase is observation and quality measurement, not architecture expansion.
+
 ## Validated milestones
 
 - Editor V1
@@ -178,7 +193,7 @@ gateway and one-shot CLI depend on the host Xray/SOCKS5 endpoint at
 `host.docker.internal:10808`. Actual VPS activation remains an operator
 verification step: validate Compose interpolation, proxy reachability, gateway
 and plugin status, then run the wrapper once before enabling the documented
-`20:30 Europe/Samara` user cron entry. Repository state alone cannot confirm
+`08:30 Europe/Samara` user cron entry. Repository state alone cannot confirm
 that this host cron has been installed or executed.
 
 The current callback UX/preflight change has no-network test coverage. Its
