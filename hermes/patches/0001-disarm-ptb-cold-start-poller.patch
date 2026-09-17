@@ -20,6 +20,34 @@ index d50f631c2..b56beb194 100644
                  if not strict_error:
                      strict_error.append(error)
                  # PTB invokes error callbacks from the polling task; the
+@@ -5025,17 +5025,25 @@ class TelegramAdapter(BasePlatformAdapter):
+                 def _polling_error_callback(error: Exception) -> None:
+                     if getattr(self, "_polling_teardown_started", False):
+                         return
++                    # PTB invokes this callback synchronously from each
++                    # generation's infinite network_retry_loop. A recovery
++                    # task can itself start the next generation before it
++                    # returns; a second 409 at that point must still disarm
++                    # PTB even though the task guard below correctly rejects
++                    # a duplicate recovery task.
++                    is_conflict = self._looks_like_polling_conflict(error)
++                    if is_conflict:
++                        self._disarm_ptb_retry_loop()
+                     if self._polling_error_task and not self._polling_error_task.done():
+                         return
+-                    if self._looks_like_polling_conflict(error):
++                    if is_conflict:
+                         # Synchronously stop PTB's internal network_retry_loop
+                         # BEFORE scheduling our async recovery task.  PTB calls
+                         # this callback synchronously inside its loop and then
+                         # keeps polling on its own; if we only schedule a task
+                         # here, PTB's retry and our stop->restart overlap and
+                         # produce a fresh 409.  Disarming the loop now makes it
+                         # exit on its next tick so recovery owns polling alone.
+-                        self._disarm_ptb_retry_loop()
+                         self._polling_error_task = loop.create_task(self._handle_polling_conflict(error))
+                         self._background_tasks.add(self._polling_error_task)
+                         self._polling_error_task.add_done_callback(self._background_tasks.discard)
 diff --git a/tests/gateway/test_telegram_conflict.py b/tests/gateway/test_telegram_conflict.py
 index 4fc9c6db9..70c460f18 100644
 --- a/tests/gateway/test_telegram_conflict.py
