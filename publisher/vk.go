@@ -37,14 +37,20 @@ type vkErr struct {
 
 // VKAPIError is a definitive response from VK: the requested method was
 // rejected and no caller should treat it as a transport ambiguity. Error()
-// intentionally exposes only the stable numeric code, never response bodies
-// or credentials.
+// exposes only a stable numeric code and API method, never response bodies,
+// request parameters, upload URLs, or credentials.
 type VKAPIError struct {
 	Code    int
+	Method  string
 	Message string
 }
 
-func (e *VKAPIError) Error() string { return fmt.Sprintf("VK_API_ERROR_%d", e.Code) }
+func (e *VKAPIError) Error() string {
+	if e.Method == "" {
+		return fmt.Sprintf("VK_API_ERROR_%d", e.Code)
+	}
+	return fmt.Sprintf("VK_API_ERROR_%d:%s", e.Code, e.Method)
+}
 
 type vkResp struct {
 	Response json.RawMessage `json:"response"`
@@ -82,7 +88,7 @@ func (c VKClient) api(ctx context.Context, method string, v url.Values, out any,
 		if x.Error.ErrorCode <= 0 {
 			return fmt.Errorf("VK_INVALID_RESPONSE")
 		}
-		return &VKAPIError{Code: x.Error.ErrorCode, Message: x.Error.ErrorMsg}
+		return &VKAPIError{Code: x.Error.ErrorCode, Method: method, Message: x.Error.ErrorMsg}
 	}
 	if len(x.Response) == 0 || bytes.Equal(x.Response, []byte("null")) {
 		return fmt.Errorf("VK_INVALID_RESPONSE")
